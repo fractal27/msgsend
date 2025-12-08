@@ -1,0 +1,383 @@
+// server.c //
+
+#include <stdio.h> 
+#include <pthread.h>
+#include <netdb.h> 
+#include <netinet/in.h> 
+#include <stdlib.h> 
+#include <string.h> 
+#include <stdbool.h> 
+#include <sys/socket.h> 
+#include <sys/types.h> 
+#include <unistd.h> // read(), write(), close()
+#include "clientserver.h"
+
+
+enum pubkey_send_mode{
+    PUBKEY_SEND_ONE,
+    PUBKEY_SEND_ALL_BUT,
+};
+
+
+typedef struct {
+       pthread_t thread;
+       int sockfd;
+       char username[MAX_USERNAME];
+       uint32_t username_len;
+       char* pubkey;
+       uint32_t pubkey_len;
+       bool free_to_ow;
+} client_t;
+
+// char* public_keys[512];
+// uint32_t npublic_keys;
+
+
+client_t clients[MAX_USERS];
+uint32_t nclients = 0;
+
+uint32_t sent_to = 0;
+// bool message_to_send = false;
+// pthread_mutex_t mutex_public_keys = PTHREAD_MUTEX_INITIALIZER;
+
+// ==================================== Util functions ===========================================
+
+bool
+is_socket_connected(int sockfd){
+       int error = 0;
+       socklen_t len = sizeof (error);
+       int retval = getsockopt (sockfd, SOL_SOCKET, SO_ERROR, &error, &len);
+       if(retval != 0){
+              fprintf(stderr, "error getting socket error code: %s\n", strerror(retval));
+              return false;
+       } else if (error != 0){
+              fprintf(stderr, "socket error: %s\n", strerror(error));
+              return false;
+       }
+       return true;
+}
+
+bool read_wrap(int sockfd, void* bytes, size_t nbytes)
+{
+       int result = read(sockfd,bytes,nbytes);
+       if(result < 0) return false;
+       // if(result == 0) {
+       //        // orderly shutdown
+       //        shutdown(SHUT_RDWR,sockfd);
+       //        close(sockfd);
+       //        return -1;
+       // }
+       return true;
+}
+
+
+// ==================================== Establish functions ===========================================
+
+int
+server_establish_client(int connfd, char out_username[MAX_USERNAME],uint32_t* out_pubkey_len, char** out_pubkey){
+       userdata_response_establish response;
+       userdata_request_establish username_request; // char[40]
+       size_t i = 0;
+       
+       response.status = OK;
+
+       printf("to get username: reading %zu bytes from %i\n",sizeof(username_request),connfd);
+       read(connfd,username_request,sizeof(username_request));
+       read(connfd,out_pubkey_len,sizeof(uint32_t));
+       *out_pubkey = malloc((*out_pubkey_len)*sizeof(char));
+       read(connfd,*out_pubkey,*out_pubkey_len);
+
+       if(username_request[0] == '\0') response.status = ERROR_USERNAME_EMPTY;
+
+       client_t* pclient = (client_t*) clients;
+       while(i++ < nclients
+         && strncmp((pclient)->username,username_request,MAX_USERNAME)) pclient++;
+         // && strncmp((pclient)->pubkey,*out_pubkey,*out_pubkey_len)) pclient++;;
+
+       printf(".... so new public key %s",*out_pubkey);
+
+       if(i != nclients + 1){
+              if(strncmp((pclient)->username,username_request,MAX_USERNAME))
+                   response.status = ERROR_USERNAME_ALREADY_TAKEN;
+              else response.status = ERROR_PUBKEY_ALREADY_TAKEN;
+              // printf("*out_pubkey_len: %u\n",*out_pubkey_len);
+              // printf("(pubkey,other_pubkey,...): %s\n",(pclient)->pubkey);
+              // printf("%s--------------------------\n",*out_pubkey);
+              // printf("i: %zu\n",i);
+       } else if(nclients == MAX_USERS){
+              response.status = ERROR_MAX_USERS_REACHED;
+              printf("ERROR: Maximum users reached\n");
+       } else {
+              memmove(out_username, username_request, MAX_USERNAME);
+       }
+
+       write(connfd,&response,sizeof(response));
+
+       printf("Wrote response.\n");
+       return response.status;
+}
+
+
+// ===================== Function for handling connected-socket messages =====================
+
+//
+// sends public keys to clients that haven't gotten them yet.
+//
+void
+send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t username_len, enum server_message_type msg_type, uint32_t pubkey_len, char* pubkey){
+       uint32_t msg_type_len;
+
+       printf("Sending public key(s)...\n");
+       switch(msg_type){
+              case SERVER_PUBKEY_NEW:
+                     switch(mode){
+                            case PUBKEY_SEND_ONE:
+                                   msg_type_len = (uint32_t)sizeof(msg_type);
+                                   if((write(sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
+                                                 && (write(sockfd,&msg_type,msg_type_len) > 0)
+                                                 && (write(sockfd,&username_len,sizeof(uint32_t)) > 0)
+                                                 && (write(sockfd,username,username_len) > 0)
+                                                 && (write(sockfd,&pubkey_len,sizeof(uint32_t)) > 0)
+                                                 && (write(sockfd,pubkey,pubkey_len) > 0)){
+                                          printf("PUBKEY_SEND_ONE: Sent new public key to %i\n",sockfd);
+                                   }
+                                   break;
+                            case PUBKEY_SEND_ALL_BUT:
+                                   for(uint32_t i = 0; i < nclients; i++){
+                                          if(clients[i].sockfd != sockfd){
+                                                 msg_type_len = (uint32_t)sizeof(msg_type);
+                                                 if( (write(clients[i].sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
+                                                  && (write(clients[i].sockfd,&msg_type,msg_type_len) > 0)
+                                                  && (write(clients[i].sockfd,&username_len,sizeof(uint32_t)) > 0)
+                                                  && (write(clients[i].sockfd,username,username_len) > 0)
+                                                  && (write(clients[i].sockfd,&pubkey_len,sizeof(uint32_t)) > 0)
+                                                  && (write(clients[i].sockfd,pubkey,pubkey_len) > 0)){
+                                                        printf("PUBKEY_SEND_ALL_BUT: Sent new public key to %i\n",sockfd);
+                                                 }
+                                          }
+                                   }
+                                   break;
+                     }
+                     break;
+              case SERVER_SEND_ALL_PUBKEYS:
+                     printf("SERVER_SEND_ALL_PUBKEYS\n");
+                     for(uint32_t i = 0; i < nclients; i++){
+                            printf("writing msg_type_len: %u\n",msg_type_len);
+                            if((write(sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
+                            && (write(sockfd,&msg_type,msg_type_len) > 0)
+                            && (write(sockfd,&nclients,sizeof(uint32_t)) > 0)
+                            && (write(sockfd,&clients[i].username_len,sizeof(uint32_t)) > 0)
+                            && (write(sockfd,clients[i].username,clients[i].username_len) > 0)
+                            && (write(sockfd,&clients[i].pubkey_len,sizeof(uint32_t)) > 0)
+                            && (write(sockfd,clients[i].pubkey,clients[i].pubkey_len) > 0)){
+                                   printf("Sent client information of %d to client %d",clients[i].sockfd,sockfd);
+                            }
+                     }
+                     break;
+              //TODO: implement
+              //case SERVER_PUBKEY_UPDATE:
+              //     break;
+              case SERVER_RELAY_ENCRYPTED_MESSAGE:
+                     fprintf(stderr,"\e[33mWarning: send_pubkeys: This function should be used only for public keys exchanges. Sending SERVER_RELAY_ENCRYPTED_MESSAGE packets is NOT the use case for it.\n\e[0m");
+                     return;
+       }
+}
+void
+try_send_to(char username_from[MAX_USERNAME], char username_to[MAX_USERNAME], char msg[MAX], 
+                                                   uint16_t username_len, uint16_t msg_len){
+       enum server_message_type msg_type = SERVER_RELAY_ENCRYPTED_MESSAGE;
+       uint32_t msg_type_size = (uint32_t) sizeof(msg_type);
+       if(username_from == username_to) return;
+
+       for(size_t i = 0; i < nclients; i++){
+              client_t client = clients[i];
+              if(!strncmp(client.username, username_to, username_len)){ //send
+                     if( (write(client.sockfd, &msg_type_size, sizeof(uint32_t)) == -1)
+                       | (write(client.sockfd, &msg_type, sizeof(msg_type)) == -1)
+                       | (write(client.sockfd, &username_len, sizeof(username_len)) == -1 )
+                       | (write(client.sockfd, username_from, username_len) == -1 )
+                       | (write(client.sockfd, &msg_len, sizeof(msg_len)) == -1 )
+                       | (write(client.sockfd, msg, msg_len) == -1))
+                            fprintf(stderr,"Error while writing.\n");
+                     else printf("Sent message '%*.s' to '%s'\n",(int)msg_len,msg,client.username);
+              }
+       }
+}
+
+void
+try_send_to_all(char username_from[MAX_USERNAME], char msg[MAX], uint16_t username_from_len, uint16_t msg_len){
+       enum server_message_type msg_type = SERVER_RELAY_ENCRYPTED_MESSAGE;
+       uint32_t msg_type_size = (uint32_t) sizeof(msg_type);
+
+       for(size_t i = 0; i < nclients; i++){
+              client_t client = clients[i];
+              if(strcmp(client.username,username_from)){
+                     if((write(client.sockfd, &msg_type_size, sizeof(uint32_t)) == -1)
+                      | (write(client.sockfd, &msg_type, sizeof(msg_type)) == -1)
+                      | (write(client.sockfd, &username_from_len, sizeof(username_from_len)) == -1)
+                      | (write(client.sockfd, username_from, username_from_len) == -1)
+                      | (write(client.sockfd, &msg_len, sizeof(msg_len)) == -1)
+                      | (write(client.sockfd, msg, msg_len) == -1))
+                            fprintf(stderr,"Error while writing.\n");
+                     else {
+                            printf("Sent message '%s' to '%s'\n",msg,client.username);
+                     }
+              }
+       }
+}
+
+void* 
+client_handler(void* gclient) 
+{ 
+       client_t* client = (client_t*)gclient;
+       int connfd = client->sockfd;
+       char username[MAX_USERNAME];
+       char* pubkey;
+       uint32_t pubkey_len;
+       userdata_request request;
+
+       if(server_establish_client(connfd, username,&pubkey_len,&pubkey) != OK){
+              printf("Aborting connection\n");
+              close(connfd);
+              return NULL; // abort client-server connection
+       }
+
+       nclients++; // nclients Global 
+
+       uint16_t username_len = strlen(username)+1;
+
+       uint32_t msglen;
+       char msg[MAX];
+
+       memmove(client->username,username,username_len);
+       client->pubkey = pubkey;
+       client->pubkey_len = pubkey_len;
+       client->username_len = username_len;
+
+       // pthread_mutex_lock(&mutex_public_keys);
+       //        public_keys[npublic_keys++]= pubkey;
+       // pthread_mutex_unlock(&mutex_public_keys);
+
+       send_pubkeys(0, connfd, username, username_len, SERVER_SEND_ALL_PUBKEYS, pubkey_len, pubkey);
+       // TODO: implement client-side
+       // send_pubkeys(PUBKEY_SEND_ALL_BUT, connfd, username, username_len, SERVER_PUBKEY_NEW, pubkey_len, pubkey);
+
+       printf("Connection established with client\n");
+
+       // infinite loop for chat 
+       for (;;) { 
+              if(read_wrap(connfd, &request, sizeof(request)) &&
+                 read_wrap(connfd, &msglen, sizeof(msglen))) {
+                     if(msglen > MAX){
+                            printf("Error: Msglen exceeded max.\n");
+                            continue;
+                     }
+                     read_wrap(connfd, msg, msglen);
+                     if(!is_socket_connected(connfd)){
+                            printf("Client '%s' disconnected\n",username);
+                            close(connfd);
+                            free(client->pubkey);
+                            memmove(client,client+1,nclients-(client-clients)-1);
+                            nclients--;
+                            return NULL;
+                     }
+                     // printf("from '%s': %s\ntype: ", username, request.msg);
+                     msg[MAX-1] = '\0';
+                     switch(request.type){
+                            case TYPE_SENDTO_ONE:
+                                   printf("send 1\n");
+                                   try_send_to(username, request.send_to[0], msg, username_len, msglen);
+                                   break;
+
+                            case TYPE_SENDTO_MANY:
+                                   printf("send many\n");
+                                   for(size_t i = 0; i < request.nsend_to; i++){
+                                          try_send_to(username, request.send_to[i], msg, username_len, msglen);
+                                   }
+                                   break;
+
+                            case TYPE_SENDTO_ALL:
+                                   printf("send all\n");
+                                   try_send_to_all(username, msg, username_len, msglen);
+                                   break;
+
+                            case TYPE_DISCONNECT:
+                                   printf("Client '%s' disconnected\n",username);
+                                   close(connfd);
+                                   free(client->pubkey);
+                                   memmove(client,client+1,nclients-(client-clients)-1);
+                                   return NULL;
+
+                            default:
+                                   printf("other: ignored\n");
+                                   break;
+
+                     }
+              }
+       } 
+       return NULL;
+} 
+
+// Driver function 
+int main() 
+{ 
+       int sockfd, connfd; 
+       socklen_t len;
+       struct sockaddr_in servaddr, cli; 
+
+       // socket create and verification 
+       int opt = 1;
+       sockfd = socket(AF_INET, SOCK_STREAM, 0); 
+       setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+       if (sockfd == -1) { 
+              printf("socket creation failed...\n"); 
+              exit(0); 
+       } 
+       else
+              printf("Socket successfully created..\n"); 
+
+       // assign IP, PORT 
+       servaddr.sin_family = AF_INET; 
+       servaddr.sin_addr.s_addr = htonl(INADDR_ANY); 
+       servaddr.sin_port = htons(PORT); 
+
+       // Binding newly created socket to given IP and verification 
+       if ((bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr))) != 0) { 
+              printf("socket bind failed...\n"); 
+              exit(0); 
+       } 
+       else
+              printf("Socket successfully binded..\n"); 
+
+       // Now server is ready to listen and verification 
+       if ((listen(sockfd, 5)) != 0) { 
+              printf("Listen failed...\n"); 
+              exit(0); 
+       } 
+       else
+              printf("Server listening..\n"); 
+       len = sizeof(cli); 
+
+       while(1){
+              // Accept the data packet from client and verification 
+              if (nclients == MAX_USERS) { 
+                printf("Max users reached: Accept must be rejected\n");
+                while(nclients == MAX_USERS) usleep(1.2e6);
+                if(nclients == MAX_USERS){
+                       // probably just keyboard interrupt while in `while` loop
+                       break;
+                }
+              }
+              connfd = accept(sockfd, (struct sockaddr*)&cli, &len); 
+              if (connfd < 0) { 
+                     printf("server accept failed...\n"); 
+                     continue;
+              } 
+              else printf("server accept the client...\n"); 
+              clients[nclients] = (client_t){ .sockfd = connfd };
+              pthread_create(&clients[nclients].thread, NULL, client_handler, &clients[nclients]);
+       }
+       // After chatting close the socket 
+       close(sockfd); 
+}
