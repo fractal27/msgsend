@@ -10,7 +10,7 @@ client: ${SOURCES}
 	$(CC) ${CFLAGS} -fsanitize=address -fPIC -g client.c gpg-util.c -o client ${LIBS}
 
 server: ${SOURCES}
-	$(CC) ${CFLAGS} serverv1.c -o server ${LIBS}
+	$(CC) ${CFLAGS} server.c -o server ${LIBS}
 
 clean:
 	rm -f client server

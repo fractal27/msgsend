@@ -1,2 +1,7 @@
+# tests, cache and executables.
 test/*
+*.*cache*
+*cache*
+client
+server
 
