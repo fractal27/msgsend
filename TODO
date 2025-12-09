@@ -1,7 +1,8 @@
 									TODO
 
-- Enable client to stop without server continuosly reading socket(should be preventable).
-- Maybe implement commands(/bye, ecc...) and a more user-friendly interface
-- Add notifications
-DONE - Implement E2E with PGP
-- PGP Exchange keys client-server
+[DONE?] - Enable client to stop without server continuosly reading socket(should be preventable).
+[     ] - Maybe implement commands(/bye, ecc...) and a more user-friendly interface
+[     ] - Add notifications
+[DONE.] - Implement E2E with PGP
+[HALFW] - PGP Exchange keys client-server
+
