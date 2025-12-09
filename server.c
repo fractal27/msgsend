@@ -9,7 +9,7 @@
 #include <stdbool.h> 
 #include <sys/socket.h> 
 #include <sys/types.h> 
-#include <unistd.h> // read(), write(), close()
+#include <unistd.h> // read(), write_wrap(), close()
 #include "clientserver.h"
 
 
@@ -57,19 +57,33 @@ is_socket_connected(int sockfd){
        return true;
 }
 
-bool read_wrap(int sockfd, void* bytes, size_t nbytes)
+#ifdef DEBUG
+bool write_wrap(int sockfd, void* bytes, size_t nbytes, char* label)
 {
-       int result = read(sockfd,bytes,nbytes);
-       if(result < 0) return false;
-       // if(result == 0) {
-       //        // orderly shutdown
-       //        shutdown(SHUT_RDWR,sockfd);
-       //        close(sockfd);
-       //        return -1;
-       // }
+       int result = write(sockfd,bytes,nbytes);
+       if(result < 0){
+              return false;
+       } else if(result > 0) {
+              printf("Writing %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
+       }
        return true;
 }
+bool read_wrap(int sockfd, void* bytes, size_t nbytes, char* label)
+{
+       int result = read(sockfd,bytes,nbytes);
+       if(result < 0){
+              return false;
+       } else if(result > 0) {
+              printf("Reading %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
+       }
+       return true;
+}
+#else // DEBUG
 
+#define read_wrap(sockfd,bytes,nbytes,label)  (read(sockfd,bytes,nbytes) == -1)
+#define write_wrap(sockfd,bytes,nbytes,label) (write(sockfd,bytes,nbytes) == -1)
+
+#endif // DEBU
 
 // ==================================== Establish functions ===========================================
 
@@ -111,7 +125,7 @@ server_establish_client(int connfd, char out_username[MAX_USERNAME],uint32_t* ou
               memmove(out_username, username_request, MAX_USERNAME);
        }
 
-       write(connfd,&response,sizeof(response));
+       write_wrap(connfd,&response,sizeof(response),"conn. establish response");
 
        printf("Wrote response.\n");
        return response.status;
@@ -131,24 +145,24 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t us
               case SERVER_PUBKEY_NEW:
                      switch(mode){
                             case PUBKEY_SEND_ONE:
-                                   if((write(sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
-                                                 && (write(sockfd,&msg_type,msg_type_len) > 0)
-                                                 && (write(sockfd,&username_len,sizeof(uint32_t)) > 0)
-                                                 && (write(sockfd,username,username_len) > 0)
-                                                 && (write(sockfd,&pubkey_len,sizeof(uint32_t)) > 0)
-                                                 && (write(sockfd,pubkey,pubkey_len) > 0)){
+                                   if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
+                                   && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type")
+                                   && write_wrap(sockfd,&username_len,sizeof(uint32_t),"username_len")
+                                   && write_wrap(sockfd,username,username_len,"username")
+                                   && write_wrap(sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len")
+                                   && write_wrap(sockfd,pubkey,pubkey_len,"pubkey")){
                                           printf("PUBKEY_SEND_ONE: Sent new public key to %i\n",sockfd);
                                    }
                                    break;
                             case PUBKEY_SEND_ALL_BUT:
                                    for(uint32_t i = 0; i < nclients; i++){
                                           if(clients[i].sockfd != sockfd){
-                                                 if( (write(clients[i].sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
-                                                  && (write(clients[i].sockfd,&msg_type,msg_type_len) > 0)
-                                                  && (write(clients[i].sockfd,&username_len,sizeof(uint32_t)) > 0)
-                                                  && (write(clients[i].sockfd,username,username_len) > 0)
-                                                  && (write(clients[i].sockfd,&pubkey_len,sizeof(uint32_t)) > 0)
-                                                  && (write(clients[i].sockfd,pubkey,pubkey_len) > 0)){
+                                                 if( write_wrap(clients[i].sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
+                                                  && write_wrap(clients[i].sockfd,&msg_type,msg_type_len,"msg_type")
+                                                  && write_wrap(clients[i].sockfd,&username_len,sizeof(uint32_t),"username_len")
+                                                  && write_wrap(clients[i].sockfd,username,username_len,"username")
+                                                  && write_wrap(clients[i].sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len")
+                                                  && write_wrap(clients[i].sockfd,pubkey,pubkey_len,"pubkey")){
                                                         printf("PUBKEY_SEND_ALL_BUT: Sent new public key to %i\n",sockfd);
                                                  }
                                           }
@@ -158,16 +172,21 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t us
                      break;
               case SERVER_SEND_ALL_PUBKEYS:
                      printf("SERVER_SEND_ALL_PUBKEYS\n");
-                     for(uint32_t i = 0; i < nclients; i++){
-                            printf("writing msg_type_len: %u\n",msg_type_len);
-                            if((write(sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
-                            && (write(sockfd,&msg_type,msg_type_len) > 0)
-                            && (write(sockfd,&nclients,sizeof(uint32_t)) > 0)
-                            && (write(sockfd,&clients[i].username_len,sizeof(uint32_t)) > 0)
-                            && (write(sockfd,clients[i].username,clients[i].username_len) > 0)
-                            && (write(sockfd,&clients[i].pubkey_len,sizeof(uint32_t)) > 0)
-                            && (write(sockfd,clients[i].pubkey,clients[i].pubkey_len) > 0)){
-                                   printf("Sent client information of %d to client %d",clients[i].sockfd,sockfd);
+                     if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
+                     && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type")
+                     && write_wrap(sockfd,&nclients,sizeof(uint32_t),"nclients")){
+                            printf("passed msg_type_len:%u, msg_type:%u, nclients:%u\n",msg_type_len, msg_type, nclients);
+                            for(uint32_t i = 0; i < nclients; i++){
+                                   printf("writing msg_type_len: %u\n",msg_type_len);
+                                   if(clients[i].sockfd != sockfd
+                                   && write_wrap(sockfd,&clients[i].username_len,sizeof(uint16_t),"username_len")
+                                   && write_wrap(sockfd,clients[i].username,clients[i].username_len,"username")
+                                   && write_wrap(sockfd,&clients[i].pubkey_len,sizeof(uint32_t),"pubkey_len")
+                                   && write_wrap(sockfd,clients[i].pubkey,clients[i].pubkey_len,"pubkey")){
+                                          printf("username_len:%u\n",clients[i].username_len);
+                                          printf("pubkey_len: %u\n",pubkey_len);
+                                          printf("Sent client information of %d to client %d\n",clients[i].sockfd,sockfd);
+                                   }
                             }
                      }
                      break;
@@ -189,14 +208,14 @@ try_send_to(char username_from[MAX_USERNAME], char username_to[MAX_USERNAME], ch
        for(size_t i = 0; i < nclients; i++){
               client_t client = clients[i];
               if(!strncmp(client.username, username_to, username_len)){ //send
-                     if( (write(client.sockfd, &msg_type_size, sizeof(uint32_t)) == -1)
-                       | (write(client.sockfd, &msg_type, sizeof(msg_type)) == -1)
-                       | (write(client.sockfd, &username_len, sizeof(username_len)) == -1 )
-                       | (write(client.sockfd, username_from, username_len) == -1 )
-                       | (write(client.sockfd, &msg_len, sizeof(msg_len)) == -1 )
-                       | (write(client.sockfd, msg, msg_len) == -1))
+                     if( write_wrap(client.sockfd, &msg_type_size, sizeof(uint32_t),"msg_type_size")
+                       || write_wrap(client.sockfd, &msg_type, sizeof(msg_type),"msg_type")
+                       || write_wrap(client.sockfd, &username_len, sizeof(username_len),"username_len")
+                       || write_wrap(client.sockfd, username_from, username_len,"username_from")
+                       || write_wrap(client.sockfd, &msg_len, sizeof(msg_len),"msg_len")
+                       || write_wrap(client.sockfd, msg, msg_len,"msg")){
                             fprintf(stderr,"Error while writing.\n");
-                     else printf("Sent message '%*.s' to '%s'\n",(int)msg_len,msg,client.username);
+                     } else printf("Sent message '%*.s' to '%s'\n",(int)msg_len,msg,client.username);
               }
        }
 }
@@ -208,15 +227,16 @@ try_send_to_all(char username_from[MAX_USERNAME], char msg[MAX], uint16_t userna
 
        for(size_t i = 0; i < nclients; i++){
               client_t client = clients[i];
+              printf("msg: (%s -> %s)\n",username_from,client.username);
               if(strcmp(client.username,username_from)){
-                     if((write(client.sockfd, &msg_type_size, sizeof(uint32_t)) == -1)
-                      | (write(client.sockfd, &msg_type, sizeof(msg_type)) == -1)
-                      | (write(client.sockfd, &username_from_len, sizeof(username_from_len)) == -1)
-                      | (write(client.sockfd, username_from, username_from_len) == -1)
-                      | (write(client.sockfd, &msg_len, sizeof(msg_len)) == -1)
-                      | (write(client.sockfd, msg, msg_len) == -1))
+                     if(write_wrap(client.sockfd, &msg_type_size, sizeof(uint32_t),"msg_type_size")
+                      || write_wrap(client.sockfd, &msg_type, sizeof(msg_type),"msg_type")
+                      || write_wrap(client.sockfd, &username_from_len, sizeof(username_from_len),"username_from_len")
+                      || write_wrap(client.sockfd, username_from, username_from_len,"username_from")
+                      || write_wrap(client.sockfd, &msg_len, sizeof(msg_len),"msg_len")
+                      || write_wrap(client.sockfd, msg, msg_len,"msg")){
                             fprintf(stderr,"Error while writing.\n");
-                     else {
+                     } else {
                             printf("Sent message '%s' to '%s'\n",msg,client.username);
                      }
               }
@@ -256,20 +276,19 @@ client_handler(void* gclient)
        // pthread_mutex_unlock(&mutex_public_keys);
 
        send_pubkeys(0, connfd, username, username_len, SERVER_SEND_ALL_PUBKEYS, pubkey_len, pubkey);
-       // TODO: implement client-side
-       // send_pubkeys(PUBKEY_SEND_ALL_BUT, connfd, username, username_len, SERVER_PUBKEY_NEW, pubkey_len, pubkey);
+       send_pubkeys(PUBKEY_SEND_ALL_BUT, connfd, username, username_len, SERVER_PUBKEY_NEW, pubkey_len, pubkey);
 
        printf("Connection established with client\n");
 
        // infinite loop for chat 
        for (;;) { 
-              if(read_wrap(connfd, &request, sizeof(request)) &&
-                 read_wrap(connfd, &msglen, sizeof(msglen))) {
+              if(read_wrap(connfd, &request, sizeof(request),"client request") &&
+                 read_wrap(connfd, &msglen, sizeof(msglen),"msglen")) {
                      if(msglen > MAX){
                             printf("Error: Msglen exceeded max.\n");
                             continue;
                      }
-                     read_wrap(connfd, msg, msglen);
+                     read_wrap(connfd, msg, msglen,"msg");
                      if(!is_socket_connected(connfd)){
                             printf("Client '%s' disconnected\n",username);
                             close(connfd);
@@ -300,18 +319,19 @@ client_handler(void* gclient)
 
                             case TYPE_DISCONNECT:
                                    printf("Client '%s' disconnected\n",username);
-                                   close(connfd);
-                                   free(client->pubkey);
-                                   memmove(client,client+1,nclients-(client-clients)-1);
-                                   return NULL;
 
                             default:
-                                   printf("other: ignored\n");
+                                   printf("Message wrongfully constructed.\n");
+                                   goto disconnect;
                                    break;
 
                      }
               }
        } 
+disconnect:
+       close(connfd);
+       free(client->pubkey);
+       memmove(client,client+1,nclients-(client-clients)-1);
        return NULL;
 } 
 

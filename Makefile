@@ -7,7 +7,7 @@ $(PATH_TO_HERBE)/herbe:
 
 client: ${SOURCES}
 	@#$(CC) -DPATH_TO_HERBE="${PATH_TO_HERBE}" ${CFLAGS} client.c -o client ${LIBS}
-	$(CC) ${CFLAGS} -fsanitize=address -fPIC -g client.c gpg-util.c -o client ${LIBS}
+	$(CC) ${CFLAGS} client.c gpg-util.c -o client ${LIBS}
 
 server: ${SOURCES}
 	$(CC) ${CFLAGS} server.c -o server ${LIBS}
