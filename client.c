@@ -284,8 +284,8 @@ void client(int sockfd)
                       size_t i;
                       printf("nusers: %zu\n",nusers);
                       for(i = 0; i < nusers; i++){
-                             printf("+ Recepient %s\n",users[i].username);
-                             recepients[i] = users[i].username;
+                             printf("+ Recepient %s (%s)\n", users[i].username, users[i].pubkey);
+                             recepients[i] = users[i].pubkey;
                       }
                       recepients[i] = NULL;
                }

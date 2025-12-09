@@ -1,0 +1,77 @@
+Socket successfully created..
+Socket successfully binded..
+Server listening..
+server accept the client...
+to get username: reading 40 bytes from 4
+.... so new public key -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEaTYhxBYJKwYBBAHaRw8BAQdAu5pzmIOpylU2CaRM1gkake3jJ6Mcd9UB5e5a
+KZAIeDq0JGdpYWMgPGdpYWNvbW8uZG9taW5pY2lAdHV0YW1haWwuY29tPoiWBBMW
+CgA+FiEEWgTfLS7lziDJk9WfHKbORXCaogcFAmk2IcQCGwMFCQWjmoAFCwkIBwIG
+FQoJCAsCBBYCAwECHgECF4AACgkQHKbORXCaogchhgD+Iq6eDs/FY3QYsIi7ui6H
+61QuQzlg6C9VRvQtIHd2DnEBAMVNWmO1Il8tJAg3mpg0x5EoxioFYN/xLxmYEiPo
+oH8OuDgEaTYhxBIKKwYBBAGXVQEFAQEHQLdL5M81oTd02Az6V13UHK6vsiitsgGu
+fNqJ01DZ4JMcAwEIB4h+BBgWCgAmFiEEWgTfLS7lziDJk9WfHKbORXCaogcFAmk2
+IcQCGwwFCQWjmoAACgkQHKbORXCaogeNWAD/VnOUQn5nVsOEj0V2c8F36YnfVitK
+XxjoAWJNyfMGx64A/0hQ1khkcpdz8agOpvA8uHqE9ioMWc+uEnYhcpZES58M
+=Cupq
+-----END PGP PUBLIC KEY BLOCK-----
+Writing 4 bytes (conn. establish response) from 4 into 0x7f890f61ba8c
+Wrote response.
+Sending public key(s)...
+SERVER_SEND_ALL_PUBKEYS
+Writing 4 bytes (msg_type_len) from 4 into 0x7f890f61baac
+Writing 4 bytes (  msg_type) from 4 into 0x7f890f61ba98
+Writing 4 bytes (  nclients) from 4 into 0x5556a62cf104
+passed msg_type_len:4, msg_type:2, nclients:1
+writing msg_type_len: 4
+Sending public key(s)...
+Connection established with client
+server accept the client...
+to get username: reading 40 bytes from 5
+.... so new public key -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEaTYhxBYJKwYBBAHaRw8BAQdAu5pzmIOpylU2CaRM1gkake3jJ6Mcd9UB5e5a
+KZAIeDq0JGdpYWMgPGdpYWNvbW8uZG9taW5pY2lAdHV0YW1haWwuY29tPoiWBBMW
+CgA+FiEEWgTfLS7lziDJk9WfHKbORXCaogcFAmk2IcQCGwMFCQWjmoAFCwkIBwIG
+FQoJCAsCBBYCAwECHgECF4AACgkQHKbORXCaogchhgD+Iq6eDs/FY3QYsIi7ui6H
+61QuQzlg6C9VRvQtIHd2DnEBAMVNWmO1Il8tJAg3mpg0x5EoxioFYN/xLxmYEiPo
+oH8OuDgEaTYhxBIKKwYBBAGXVQEFAQEHQLdL5M81oTd02Az6V13UHK6vsiitsgGu
+fNqJ01DZ4JMcAwEIB4h+BBgWCgAmFiEEWgTfLS7lziDJk9WfHKbORXCaogcFAmk2
+IcQCGwwFCQWjmoAACgkQHKbORXCaogeNWAD/VnOUQn5nVsOEj0V2c8F36YnfVitK
+XxjoAWJNyfMGx64A/0hQ1khkcpdz8agOpvA8uHqE9ioMWc+uEnYhcpZES58M
+=Cupq
+-----END PGP PUBLIC KEY BLOCK-----
+Writing 4 bytes (conn. establish response) from 5 into 0x7f890ee1aa8c
+Wrote response.
+Sending public key(s)...
+SERVER_SEND_ALL_PUBKEYS
+Writing 4 bytes (msg_type_len) from 5 into 0x7f890ee1aaac
+Writing 4 bytes (  msg_type) from 5 into 0x7f890ee1aa98
+Writing 4 bytes (  nclients) from 5 into 0x5556a62cf104
+passed msg_type_len:4, msg_type:2, nclients:2
+writing msg_type_len: 4
+Writing 2 bytes (username_len) from 5 into 0x5556a62cf154
+Writing 8 bytes (  username) from 5 into 0x5556a62cf12c
+Writing 4 bytes (pubkey_len) from 5 into 0x5556a62cf160
+Writing 660 bytes (    pubkey) from 5 into 0x7f8908000b70
+username_len:8
+pubkey_len: 660
+Sent client information of 4 to client 5
+writing msg_type_len: 4
+Sending public key(s)...
+Writing 4 bytes (msg_type_len) from 4 into 0x7f890ee1aaac
+Writing 4 bytes (  msg_type) from 4 into 0x7f890ee1aa98
+Writing 4 bytes (username_len) from 4 into 0x7f890ee1aa9c
+Writing 15 bytes (  username) from 4 into 0x7f890ee1ab40
+Writing 4 bytes (pubkey_len) from 4 into 0x7f890ee1aa94
+Writing 660 bytes (    pubkey) from 4 into 0x7f8900000b70
+PUBKEY_SEND_ALL_BUT: Sent new public key to 5
+Connection established with client
+
+Reading 812 bytes (client request) from 4 into 0x7f890f61bb70
+Client 'client1' disconnected
+Message wrongfully constructed.
+Reading 812 bytes (client request) from 5 into 0x7f890ee1ab70
+Client 'client1238<>;SV' disconnected.
+
