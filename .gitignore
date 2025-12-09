@@ -2,6 +2,6 @@
 test/*
 *.*cache*
 *cache*
-client
-server
+# client
+# server
 
