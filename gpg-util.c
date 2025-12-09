@@ -8,6 +8,9 @@
 #include <stdint.h>
 #include "gpg-util.h"
 
+
+#define unlikely(a) __builtin_expect((!!a),0)
+
 #ifndef GPG_USING_ARMOR
 #define GPG_USING_ARMOR       1 // set to 1 for true
 #endif // GPG_USING_ARMOR
@@ -370,12 +373,10 @@ void xdg_where_data(char xdg_home_data[PATH_MAX]){
        } else if(dir) free(dir);
 
        // Fallback: OME/.local/share
-       bool to_free = false;
        char *home = getenv("HOME");
-       if (home){
-              to_free = true;
-       } else home = "/tmp";   // very unlikely
+       if(unlikely(!home)) {
+              home = "/tmp";
+       }
        snprintf(xdg_home_data, PATH_MAX, "%s/.local/share", home);
-       if(to_free) free(home);
 }
 

@@ -125,14 +125,12 @@ server_establish_client(int connfd, char out_username[MAX_USERNAME],uint32_t* ou
 //
 void
 send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t username_len, enum server_message_type msg_type, uint32_t pubkey_len, char* pubkey){
-       uint32_t msg_type_len;
-
+       uint32_t msg_type_len = (uint32_t)sizeof(msg_type);
        printf("Sending public key(s)...\n");
        switch(msg_type){
               case SERVER_PUBKEY_NEW:
                      switch(mode){
                             case PUBKEY_SEND_ONE:
-                                   msg_type_len = (uint32_t)sizeof(msg_type);
                                    if((write(sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
                                                  && (write(sockfd,&msg_type,msg_type_len) > 0)
                                                  && (write(sockfd,&username_len,sizeof(uint32_t)) > 0)
@@ -145,7 +143,6 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t us
                             case PUBKEY_SEND_ALL_BUT:
                                    for(uint32_t i = 0; i < nclients; i++){
                                           if(clients[i].sockfd != sockfd){
-                                                 msg_type_len = (uint32_t)sizeof(msg_type);
                                                  if( (write(clients[i].sockfd,&msg_type_len,sizeof(uint32_t)) > 0)
                                                   && (write(clients[i].sockfd,&msg_type,msg_type_len) > 0)
                                                   && (write(clients[i].sockfd,&username_len,sizeof(uint32_t)) > 0)

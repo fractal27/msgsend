@@ -26,7 +26,6 @@ size_t nusers = 0;
 
 
 // char msg_to_write[MAX];
-pthread_mutex_t mutex_write_stdout = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_users = PTHREAD_MUTEX_INITIALIZER;
 bool read_wrap(int sockfd, void* bytes, size_t nbytes)
 {
@@ -167,12 +166,10 @@ thread_read_messages(void* gsockfd){
                                 }
                                 decrypt_verify_result_t r = decrypt_and_verify_gpgme(msg);
 
-                                pthread_mutex_lock(&mutex_write_stdout);
-                                       if (r.signature_valid == 0)     printf("\e[33mWARNING: Signature INVALID\e[0m");
-                                       //else if (r.signature_valid == 1)      printf("Signature VALID (fingerprint: %s)\n", r.signer_fingerprint);
-                                       else if(r.signature_valid == -1) printf("\e[33mWARNING: No signature found\e[0m");
-                                       printf("\n[\e[32m%s\e[0m]: %s\n", username, r.plaintext);
-                                pthread_mutex_unlock(&mutex_write_stdout);
+                                if (r.signature_valid == 0)     printf("\e[33mWARNING: Signature INVALID\e[0m");
+                                //else if (r.signature_valid == 1)      printf("Signature VALID (fingerprint: %s)\n", r.signer_fingerprint);
+                                else if(r.signature_valid == -1) printf("\e[33mWARNING: No signature found\e[0m");
+                                printf("\n[\e[32m%s\e[0m]: %s\n", username, r.plaintext);
                                 free(r.plaintext);
                                 free(r.signer_fingerprint);
                                 break;
@@ -183,6 +180,7 @@ thread_read_messages(void* gsockfd){
 
 void client(int sockfd)
 {
+       pthread_t thread_read;
        char msg[MAX];
        char username[40];
        int n;
@@ -198,6 +196,7 @@ void client(int sockfd)
        char* pubkey = export_public_key(identity);
        printf("public key sent to server: %s\n",pubkey);
        userdata_response_establish response = client_establish(sockfd, username, strlen(pubkey), pubkey);
+       pthread_create(&thread_read, NULL, thread_read_messages, &sockfd);
        switch(response.status){
               case ERROR_MAX_USERS_REACHED:
                      printf("Error:  Server has reached the max possible users.\n");
@@ -239,6 +238,7 @@ void client(int sockfd)
               if(request.type == TYPE_SENDTO_ALL){
                      size_t i;
                      for(i = 0; i < nusers; i++){
+                            printf("+ Recepient %s\n",users[i].username);
                             recepients[i] = users[i].username;
                      }
                      recepients[i] = NULL;
@@ -257,6 +257,7 @@ void client(int sockfd)
        request.type = TYPE_DISCONNECT;
        bzero(msg,MAX);
        send(sockfd, &request, sizeof(request), 0);
+       free(pubkey);
        
 }
 
@@ -273,7 +274,6 @@ int main(int argc, char** argv)
 {
        int sockfd;
        struct sockaddr_in servaddr;
-       pthread_t thread_read;
 
        // socket create and verification
        sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -297,7 +297,6 @@ int main(int argc, char** argv)
               exit(1);
        } else printf("connected to the server..\n");
        setup(); // setup encryption
-       pthread_create(&thread_read, NULL, thread_read_messages, &sockfd);
 
        // function for chat
        client(sockfd);
