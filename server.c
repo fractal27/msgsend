@@ -138,17 +138,18 @@ server_establish_client(int connfd, char out_username[MAX_USERNAME],uint32_t* ou
 // sends public keys to clients that haven't gotten them yet.
 //
 void
-send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t username_len, enum server_message_type msg_type, uint32_t pubkey_len, char* pubkey){
+send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t username_len, server_message_type_t msg_type, uint32_t pubkey_len, char* pubkey){
        uint32_t msg_type_len = (uint32_t)sizeof(msg_type);
        printf("Sending public key(s)...\n");
-       switch(msg_type){
+       switch((enum server_message_type) msg_type){
               case SERVER_PUBKEY_NEW:
+                     printf("[Server -> Client] Sending SERVER_PUBKEY_NEW\n");
                      switch(mode){
                             case PUBKEY_SEND_ONE:
                                    if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
                                    && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type")
-                                   && write_wrap(sockfd,&username_len,sizeof(uint32_t),"username_len")
-                                   && write_wrap(sockfd,username,username_len,"username")
+                                   && write_wrap(sockfd,&username_len,sizeof(uint16_t),"username_len")
+                                   && write_wrap(sockfd,username,(size_t)username_len,"username")
                                    && write_wrap(sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len")
                                    && write_wrap(sockfd,pubkey,pubkey_len,"pubkey")){
                                           printf("PUBKEY_SEND_ONE: Sent new public key to %i\n",sockfd);
@@ -157,10 +158,9 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t us
                             case PUBKEY_SEND_ALL_BUT:
                                    for(uint32_t i = 0; i < nclients; i++){
                                           if(clients[i].sockfd != sockfd){
-                                                 if( write_wrap(clients[i].sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
-                                                  && write_wrap(clients[i].sockfd,&msg_type,msg_type_len,"msg_type")
-                                                  && write_wrap(clients[i].sockfd,&username_len,sizeof(uint32_t),"username_len")
-                                                  && write_wrap(clients[i].sockfd,username,username_len,"username")
+                                                 if(write_wrap(clients[i].sockfd,&msg_type,msg_type_len,"msg_type")
+                                                  && write_wrap(clients[i].sockfd,&username_len,sizeof(uint16_t),"username_len")
+                                                  && write_wrap(clients[i].sockfd,username,(size_t)username_len,"username")
                                                   && write_wrap(clients[i].sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len")
                                                   && write_wrap(clients[i].sockfd,pubkey,pubkey_len,"pubkey")){
                                                         printf("PUBKEY_SEND_ALL_BUT: Sent new public key to %i\n",sockfd);
@@ -169,9 +169,10 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t us
                                    }
                                    break;
                      }
+                     printf("[Server -> Client] Done\n");
                      break;
               case SERVER_SEND_ALL_PUBKEYS:
-                     printf("SERVER_SEND_ALL_PUBKEYS\n");
+                     printf("[Server -> Client] Sending SERVER_SEND_ALL_PUBKEYS\n");
                      if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
                      && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type")
                      && write_wrap(sockfd,&nclients,sizeof(uint32_t),"nclients")){
@@ -189,6 +190,7 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t us
                                    }
                             }
                      }
+                     printf("[Server -> Client] Done\n");
                      break;
               //TODO: implement
               //case SERVER_PUBKEY_UPDATE:
@@ -201,7 +203,7 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint32_t us
 void
 try_send_to(char username_from[MAX_USERNAME], char username_to[MAX_USERNAME], char msg[MAX], 
                                                    uint16_t username_len, uint16_t msg_len){
-       enum server_message_type msg_type = SERVER_RELAY_ENCRYPTED_MESSAGE;
+       server_message_type_t msg_type = SERVER_RELAY_ENCRYPTED_MESSAGE;
        uint32_t msg_type_size = (uint32_t) sizeof(msg_type);
        if(username_from == username_to) return;
 
@@ -210,7 +212,7 @@ try_send_to(char username_from[MAX_USERNAME], char username_to[MAX_USERNAME], ch
               if(!strncmp(client.username, username_to, username_len)){ //send
                      if( write_wrap(client.sockfd, &msg_type_size, sizeof(uint32_t),"msg_type_size")
                        || write_wrap(client.sockfd, &msg_type, sizeof(msg_type),"msg_type")
-                       || write_wrap(client.sockfd, &username_len, sizeof(username_len),"username_len")
+                       || write_wrap(client.sockfd, &username_len, sizeof(uint16_t),"username_len")
                        || write_wrap(client.sockfd, username_from, username_len,"username_from")
                        || write_wrap(client.sockfd, &msg_len, sizeof(msg_len),"msg_len")
                        || write_wrap(client.sockfd, msg, msg_len,"msg")){
@@ -222,7 +224,7 @@ try_send_to(char username_from[MAX_USERNAME], char username_to[MAX_USERNAME], ch
 
 void
 try_send_to_all(char username_from[MAX_USERNAME], char msg[MAX], uint16_t username_from_len, uint16_t msg_len){
-       enum server_message_type msg_type = SERVER_RELAY_ENCRYPTED_MESSAGE;
+       server_message_type_t msg_type = SERVER_RELAY_ENCRYPTED_MESSAGE;
        uint32_t msg_type_size = (uint32_t) sizeof(msg_type);
 
        for(size_t i = 0; i < nclients; i++){

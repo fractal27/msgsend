@@ -40,4 +40,6 @@ enum server_message_type {
        SERVER_SEND_ALL_PUBKEYS
 };
 
+typedef uint32_t server_message_type_t;
+
 #endif
