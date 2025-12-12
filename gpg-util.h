@@ -35,6 +35,9 @@ export_public_key(char* fpr);
 bool 
 is_key_usable(gpgme_key_t key);
 
-void xdg_where_data(char xdg_home_data[PATH_MAX])
-       __attribute((nonnull));
+// void xdg_where_data(char xdg_home_data[PATH_MAX])
+//        __attribute((nonnull));
+
+int 
+import_key(char* pubkey, uint32_t pubkey_len, char** out_fpr);
 #endif // MSGSND_GPG_UTIL_H

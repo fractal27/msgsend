@@ -29,47 +29,6 @@ size_t nusers = 0;
 pthread_mutex_t mutex_users = PTHREAD_MUTEX_INITIALIZER;
 
 
-#ifdef DEBUG
-
-void hexdump(const void *buf, size_t len) {
-           const unsigned char *p = buf;
-               for(size_t i=0;i<len;i++) printf("%02X ", p[i]);
-                   printf("\n");
-}
-
-bool read_wrap(int sockfd, void* bytes, size_t nbytes, char* label, char* fmt, bool show_value)
-{
-       int result = recv(sockfd,bytes,nbytes,0);
-       if(result < 0){
-              return false;
-       } else {
-              printf("Reading %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
-              // if(nbytes > 200){
-              //        printf("Unreasonable number of bytes.\n");
-              // } else printf("Wrote `%*.s` bytes", (int)nbytes, (char*)bytes);
-              hexdump(bytes,nbytes<200?nbytes:200);
-       }
-       return true;
-}
-bool write_wrap(int sockfd, void* bytes, size_t nbytes, char* label, char* fmt, bool show_value)
-{
-       int result = send(sockfd,bytes,nbytes,0);
-       if(result < 0){
-              return false;
-       } else {
-              printf("Writing %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
-              hexdump(bytes,nbytes<200?nbytes:200);
-       }
-       return true;
-}
-#else 
-
-#define write_wrap(sockfd, bytes, nbytes, label, fmt, show_value) \
-       (write(sockfd,bytes,nbytes) == -1)
-#define read_wrap(sockfd, bytes, nbytes, label, fmt, show_value) \
-       (read(sockfd,bytes,nbytes) == -1)
-
-#endif
 
 
 userdata_response_establish
@@ -90,21 +49,21 @@ client_establish(int sockfd, char username[40],uint32_t len_pubkey,char* pubkey)
 
        if(ulen == -1) ulen = 0;
        username[ulen] = '\0';
-       memmove(request,username,ulen);
+       memmove(request,username,ulen+1);
        // printf("to send username: writing %zu bytes\n",sizeof(request));
 
-       if(!write_wrap(sockfd, request, sizeof(request),"establish username","%d",true))  {
+       if(!write_wrap(sockfd, request, sizeof(request),"establish username",VALUE_STRING))  {
               fprintf(stderr,"client_established: write(fd,request,sizeof(request)) failed (Server lost?)\n");
        }
-       if(!write_wrap(sockfd, &len_pubkey, sizeof(len_pubkey),"len_pubkey","%d",true))  {
+       if(!write_wrap(sockfd, &len_pubkey, sizeof(uint32_t),"len_pubkey",VALUE_UINT32))  {
               fprintf(stderr,"client_established: write(fd,&len_pubkey,sizeof(len_pubkey)) failed (Server lost?)\n");
        }
-       if(!write_wrap(sockfd, pubkey, len_pubkey, "pubkey", "%d", true))  {
+       if(!write_wrap(sockfd, pubkey, len_pubkey, "pubkey", VALUE_UINT32))  {
               fprintf(stderr,"client_established: write(fd,pubkey,lenpubkey) failed (Server lost?)\n");
        }
 
 
-       if(!read_wrap(sockfd, &response, sizeof(response),"establish response", "%x",false)) {
+       if(!read_wrap(sockfd, &response, sizeof(response),"establish response", VALUE_STRING_HEX)) {
               fprintf(stderr,"client_established: read(fd,buf,n) failed  (Server lost?)\n");
        }
 
@@ -136,35 +95,27 @@ client_establish(int sockfd, char username[40],uint32_t len_pubkey,char* pubkey)
 
 
 void
-pubkey_add(char* pubkey, uint32_t pubkey_len, char* username, uint32_t username_len){
+user_add(char* pubkey, uint32_t pubkey_len, char* username, uint32_t username_len){
 #ifdef DEBUG
        printf("pubkey got: `%s`(%zu bytes)\n",pubkey,sizeof(pubkey));
 #endif // DEBUG
        // pthread_mutex_lock(&mutex_users);
-       gpgme_data_t keydata;
-       gpgme_data_new_from_mem(&keydata,pubkey,pubkey_len,0);
-       if(gpgme_op_import(ctx,keydata) != 0){
-              printf("gpgme error: pubkey couldn't be imported.\n");
-              goto leave;
+       char* fpr;
+       if(import_key(pubkey,pubkey_len,&fpr) < 0){
+              printf("No fingerprint available\n");
+              return;
        }
-       gpgme_import_result_t ir = gpgme_op_import_result(ctx);
-       gpgme_import_status_t s;
-       for (s = ir->imports; s; s = s->next) 
-       { 
-              if (s->fpr) break; 
-       }
-       users[nusers].fingerprint = s->fpr;
+       users[nusers].fingerprint = fpr;
        users[nusers].pubkey = pubkey;
        memmove(users[nusers].username,username,MAX_USERNAME);
        // pthread_mutex_unlock(&mutex_users);
        nusers++;
 #ifdef DEBUG
-       printf("--> pubkey added");
+       printf("--> pubkey added with fingerprint %s\n",fpr);
        printf("nusers: %zu\n",nusers);
 #endif // DEBUG
-leave:
-       gpgme_data_release(keydata);
 }
+
 void*
 thread_read_messages(void* gsockfd){
     server_message_type_t srv_msg_type;
@@ -182,47 +133,60 @@ thread_read_messages(void* gsockfd){
 
 
     for(;;){
-           if(read_wrap(sockfd, &msg_type_len, sizeof(msg_type_len),"msg_type_len","%u",true)){
+           if(read_wrap(sockfd, &msg_type_len, sizeof(uint32_t),"msg_type_len",VALUE_UINT32)){
                   // printf("Arrived here; msg_type_len: %u\n", msg_type_len);
-                  if(!read_wrap(sockfd, &srv_msg_type, msg_type_len,"srv_msg_type","%u",true)){
+                  if(!read_wrap(sockfd, &srv_msg_type, msg_type_len,"srv_msg_type",VALUE_MSGTYPE)){
                          fprintf(stderr,"Read error\n");
                          continue;
                   }
                   switch(srv_msg_type){
                          case SERVER_PUBKEY_NEW:
-                                printf(">>> SERVER_PUBKEY_NEW\n");
-                                if(read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len","%u",true)
-                                       && read_wrap(sockfd, username, username_len,"username","%s",true)
-                                       && read_wrap(sockfd, &pubkey_len, sizeof(uint32_t),"pubkey_len","%u",true)){
+                                if(read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
+                                && read_wrap(sockfd, username, username_len,"username",VALUE_STRING)
+                                && read_wrap(sockfd, &pubkey_len, sizeof(uint32_t),"pubkey_len",VALUE_UINT32)){
                                        // printf("pubkey_len: %zu\n",(size_t)pubkey_len);
                                        pubkey = (char*)malloc((size_t)pubkey_len+1);
-                                       if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey","%s",false)){
-                                              printf("Read error from initial public key push");
+                                       if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey",VALUE_STRING)){
+                                              fprintf(stderr,"Read error from initial public key push");
                                               break;
                                        }
-                                       pubkey_add(pubkey,pubkey_len,username,username_len);
+                                       user_add(pubkey,pubkey_len,username,username_len);
                                 }
                                 
                                 break;
+                         case SERVER_NOTIFY_DISCONNECT:
+                                // notifies of the disconnect of another client, so that we remove that from the list.
+                                if(read_wrap(sockfd, &username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
+                                && read_wrap(sockfd,username,username_len,sizeof(uint16_t)"username",VALUE_STRING)){
+                                       for(uint32_t client_idx = 0; client_idx < nusers; client_idx++)
+                                       {
+                                              if(!strncmp(username,users[client_idx].username,username_len)){
+                                                     printf("User %s disconnected\n",username); 
+                                                     memmove(&users[client_idx],&users[client_idx]+1,nusers-client_idx-1);
+                                                     break;
+                                              }
+                                       }
+                                }
+
+                                break;
                          case SERVER_SEND_ALL_PUBKEYS:
                                 // initial public key push after the establishment of connection.
-                                printf(">>> SERVER_SEND_ALL_PUBKEYS\n");
-                                if(!read_wrap(sockfd, &npubkeys, sizeof(uint32_t),"npubkeys","%u",true)){
+                                if(!read_wrap(sockfd, &npubkeys, sizeof(uint32_t),"npubkeys",VALUE_UINT32)){
                                        printf("Read error from initial public key push");
                                        continue;
                                 }
                                 // printf("Reading %u public keys\n",npubkeys);
                                 for(size_t i = 0; i < npubkeys; i++){
-                                       if(read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len","%u",true)
-                                       && read_wrap(sockfd, username, username_len,"username","%s",true)
-                                       && read_wrap(sockfd, &pubkey_len, sizeof(uint32_t),"pubkey_len","%u",true)){
+                                       if(read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
+                                       && read_wrap(sockfd, username, username_len,"username",VALUE_STRING)
+                                       && read_wrap(sockfd, &pubkey_len, sizeof(uint32_t),"pubkey_len",VALUE_UINT32)){
                                               // printf("pubkey_len: %zu\n",(size_t)pubkey_len);
                                               pubkey = (char*)malloc((size_t)pubkey_len+1);
-                                              if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey","%s",false)){
+                                              if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey",VALUE_STRING)){
                                                      printf("Read error from initial public key push");
                                                      break;
                                               }
-                                              pubkey_add(pubkey,pubkey_len,username,username_len);
+                                              user_add(pubkey,pubkey_len,username,username_len);
                                        }
                                 }
 
@@ -230,10 +194,11 @@ thread_read_messages(void* gsockfd){
                                 break;
 
                          case SERVER_RELAY_ENCRYPTED_MESSAGE:
-                                if( !read_wrap(sockfd, &username_len, sizeof(username_len),"username_len","%u",true)
-                                 || !read_wrap(sockfd, username, username_len, username,"%s",true)
-                                 || !read_wrap(sockfd, &msg_len, sizeof(msg_len),"msg_len","%u",true)
-                                 || !read_wrap(sockfd, msg, msg_len,"msg","%s",false)){
+                                if( !read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
+                                 || !read_wrap(sockfd, username, username_len, username,VALUE_STRING)
+                                 || !read_wrap(sockfd, &msg_len, sizeof(uint16_t),"msg_len",VALUE_UINT16)
+                                 || msg_len > 65535
+                                 || !read_wrap(sockfd, msg, msg_len,"msg",VALUE_STRING)){
                                        fprintf(stderr,"Read error\n");
                                        // shutdown(sockfd,SHUT_RDWR);
                                        // close(sockfd);
@@ -316,7 +281,7 @@ void client(int sockfd)
                       size_t i;
                       printf("nusers: %zu\n",nusers);
                       for(i = 0; i < nusers; i++){
-                             printf("+ Recepient %s (%s)\n", users[i].username, users[i].pubkey);
+                             printf("+ Recepient %s (%s)\n", users[i].username, users[i].fingerprint);
                              recepients[i] = users[i].fingerprint;
                       }
                       recepients[i] = NULL;

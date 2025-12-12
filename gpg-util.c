@@ -374,3 +374,28 @@ bool is_key_usable(gpgme_key_t key)
 //        snprintf(xdg_home_data, PATH_MAX, "%s/.local/share", home);
 // }
 
+int
+import_key(char* pubkey, uint32_t pubkey_len, char** fpr){
+       gpgme_data_t keydata;
+       gpgme_import_result_t ir = NULL;
+       int ret = -1;
+
+       gpgme_data_new_from_mem(&keydata,pubkey,pubkey_len,0);
+       if(gpgme_op_import(ctx,keydata) != 0){
+              printf("gpgme error: pubkey couldn't be imported.\n");
+              goto leave;
+       }
+       ir = gpgme_op_import_result(ctx);
+       gpgme_import_status_t s;
+       for (s = ir->imports; s; s = s->next) 
+       { 
+              if (s->fpr){
+                     ret = 0;
+                     break; 
+              }
+       }
+       *fpr = strdup(s->fpr);
+leave:
+       gpgme_data_release(keydata);
+       return ret;
+}
