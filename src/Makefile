@@ -1,5 +1,5 @@
 # Makefile for source directory
-include "../make/src.mk"
+include ../make/src.mk
 
 all: release
 

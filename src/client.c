@@ -207,9 +207,14 @@ thread_read_messages(void* gsockfd){
                                 }
                                 decrypt_verify_result_t r = decrypt_and_verify_gpgme(msg);
 
-                                if (r.signature_valid == 0)     printf("\e[33mWARNING: Signature INVALID\e[0m");
+                                if (r.signature_valid == 0)     
+                                {
+                                       printf("\e[33mWARNING: Signature INVALID\e[0m");
+                                }
                                 //else if (r.signature_valid == 1)      printf("Signature VALID (fingerprint: %s)\n", r.signer_fingerprint);
-                                else if(r.signature_valid == -1) printf("\e[33mWARNING: No signature found\e[0m");
+                                else if(r.signature_valid == -1) {
+                                       printf("\e[33mWARNING: No signature found\e[0m");
+                                }
                                 printf("\n[\e[32m%s\e[0m]: %s\n", username, r.plaintext);
                                 free(r.plaintext);
                                 free(r.signer_fingerprint);
@@ -249,7 +254,10 @@ void client(int sockfd)
                       printf("Error:  Username is already taken\n");
                       return;
                case ERROR_USERNAME_EMPTY:
-                      printf("Error:  Username is empty\\nn");
+                      printf("Error:  Username is empty\n");
+                      return;
+               case ERROR_GENERIC:
+                      printf("Server error: Generic\n");
                       return;
                case OK:
                       printf("Connection established\n");

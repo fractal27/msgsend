@@ -2,6 +2,7 @@
 #define MSGCNL_CLIENTSERVER_H
 
 #include <stdint.h>
+#include <time.h>
 
 #define MAX 65535
 #define PORT 7979
@@ -15,7 +16,8 @@ typedef union {
               ERROR_USERNAME_ALREADY_TAKEN = (1 << 1),
               ERROR_PUBKEY_ALREADY_TAKEN   = (1 << 2),
               ERROR_MAX_USERS_REACHED      = (1 << 3),
-              ERROR_USERNAME_EMPTY         = (1 << 4)
+              ERROR_USERNAME_EMPTY         = (1 << 4),
+              ERROR_GENERIC                = (1 << 5),
        }  status;
 } userdata_response_establish;
 typedef char userdata_request_establish[MAX_USERNAME];
@@ -54,10 +56,22 @@ typedef uint32_t server_message_type_t;
 
 #ifdef DEBUG
 
+
+#define printf(x,...) \
+       do {\
+              struct timespec ts;\
+              clock_gettime(CLOCK_REALTIME,&ts);\
+              printf("[ %3jd.%03ld ] ",(intmax_t)ts.tv_sec % 60, ts.tv_nsec / 1000000);\
+              printf(x __VA_OPT__(,) __VA_ARGS__);\
+       } while(0);
+
+
 void hexdump(const void *buf, size_t len) {
        const unsigned char *p = buf;
-       for(size_t i=0;i<len;i++) printf("%02X ", p[i]);
-       printf("\n");
+       for(size_t i=0;i<len;i++){
+              fprintf(stderr,"%02X ", p[i]);
+       }
+       fprintf(stderr,"\n");
 }
 
 void

@@ -17,5 +17,5 @@ RELEASE_TARGETS := ${RELEASE_DIR}/server ${RELEASE_DIR}/client
 
 LIBS          := -L ../lib -lgpgme -lc
 CFLAGS        := -O2 -I ../include -D_FORTIFY_SOURCE
-DEBUG_CFLAGS  := -Wall -Werror -O2 -DDEBUG -ggdb -I ../include -D_FORTIFY_SOURCE
+DEBUG_CFLAGS  := -Wall -O2 -DDEBUG -ggdb -I ../include -D_FORTIFY_SOURCE -Wno-unused
 

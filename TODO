@@ -8,3 +8,4 @@
 [     ] - Automated testing
 [DONE.] - Implement mutex for client and a mutex for clients modification. 
 [     ] - Remove the struct data_request logic and use structural procedural instead of packed.
+[     ] - Fix the unilateral message issue
