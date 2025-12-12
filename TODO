@@ -1,8 +1,10 @@
 									TODO
 
-[DONE?] - Enable client to stop without server continuosly reading socket(should be preventable).
+[DONE.] - Enable client to stop without server continuosly reading socket(should be preventable).
 [     ] - Maybe implement commands(/bye, ecc...) and a more user-friendly interface
 [     ] - Add notifications
 [DONE.] - Implement E2E with PGP
-[HALFW] - PGP Exchange keys client-server
-
+[DONE.] - PGP Exchange keys client-server
+[     ] - Automated testing
+[DONE.] - Implement mutex for client and a mutex for clients modification. 
+[     ] - Remove the struct data_request logic and use structural procedural instead of packed.

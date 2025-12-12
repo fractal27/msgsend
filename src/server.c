@@ -31,7 +31,7 @@ typedef struct {
 
 // char* public_keys[512];
 // uint32_t npublic_keys;
-
+pthread_mutex_t mutex_new_client = PTHREAD_MUTEX_INITIALIZER;
 
 client_t clients[MAX_USERS];
 uint32_t nclients = 0;
@@ -68,17 +68,21 @@ server_establish_client(int connfd, char out_username[MAX_USERNAME],uint32_t* ou
        response.status = OK;
 
        printf("to get username: reading %zu bytes from %i\n",sizeof(username_request),connfd);
-       read(connfd,username_request,sizeof(username_request));
-       read(connfd,out_pubkey_len,sizeof(uint32_t));
+       if(!read_wrap(connfd,username_request,sizeof(username_request),"username_request",VALUE_STRING)
+       || !read_wrap(connfd,out_pubkey_len,sizeof(uint32_t),"pubkey_len",VALUE_UINT32)){
+              printf("Read error: aborting establish connection.\n");
+              return ERROR_USERNAME_EMPTY;
+       }
+
        *out_pubkey = malloc((*out_pubkey_len)*sizeof(char));
-       read(connfd,*out_pubkey,*out_pubkey_len);
+       read_wrap(connfd,*out_pubkey,*out_pubkey_len,"pubkey",VALUE_STRING);
 
        if(username_request[0] == '\0') response.status = ERROR_USERNAME_EMPTY;
 
        client_t* pclient = (client_t*) clients;
        while(i++ < nclients
-         && strncmp((pclient)->username,username_request,MAX_USERNAME)) pclient++;
-         // && strncmp((pclient)->pubkey,*out_pubkey,*out_pubkey_len)) pclient++;;
+         && strncmp((pclient)->username,username_request,MAX_USERNAME)
+         && strncmp((pclient)->pubkey,*out_pubkey,*out_pubkey_len)) pclient++;
 
        printf(".... so new public key %s",*out_pubkey);
 
@@ -86,10 +90,6 @@ server_establish_client(int connfd, char out_username[MAX_USERNAME],uint32_t* ou
               if(strncmp((pclient)->username,username_request,MAX_USERNAME))
                    response.status = ERROR_USERNAME_ALREADY_TAKEN;
               else response.status = ERROR_PUBKEY_ALREADY_TAKEN;
-              // printf("*out_pubkey_len: %u\n",*out_pubkey_len);
-              // printf("(pubkey,other_pubkey,...): %s\n",(pclient)->pubkey);
-              // printf("%s--------------------------\n",*out_pubkey);
-              // printf("i: %zu\n",i);
        } else if(nclients == MAX_USERS){
               response.status = ERROR_MAX_USERS_REACHED;
               printf("ERROR: Maximum users reached\n");
@@ -110,7 +110,7 @@ server_establish_client(int connfd, char out_username[MAX_USERNAME],uint32_t* ou
 // sends public keys to clients that haven't gotten them yet.
 //
 void
-send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t username_len, server_message_type_t msg_type, uint32_t pubkey_len, char* pubkey){
+send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t username_len, pthread_mutex_t* mutex_lock, server_message_type_t msg_type, uint32_t pubkey_len, char* pubkey){
        uint32_t msg_type_len = (uint32_t)sizeof(msg_type);
        printf("Sending public key(s)...\n");
        switch((enum server_message_type) msg_type){
@@ -118,27 +118,31 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t us
                      printf("[Server -> Client] Sending SERVER_PUBKEY_NEW\n");
                      switch(mode){
                             case PUBKEY_SEND_ONE:
+                                   //the linear search is neccessary to find the mutex lock
+                                   pthread_mutex_lock(mutex_lock);
                                    if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len",VALUE_UINT32)
-                                   && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type",VALUE_MSGTYPE)
-                                   && write_wrap(sockfd,&username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                   && write_wrap(sockfd,username,(size_t)username_len,"username",VALUE_STRING)
-                                   && write_wrap(sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len",VALUE_UINT32)
-                                   && write_wrap(sockfd,pubkey,pubkey_len,"pubkey",VALUE_STRING)){
+                                                 && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type",VALUE_MSGTYPE)
+                                                 && write_wrap(sockfd,&username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
+                                                 && write_wrap(sockfd,username,(size_t)username_len,"username",VALUE_STRING)
+                                                 && write_wrap(sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len",VALUE_UINT32)
+                                                 && write_wrap(sockfd,pubkey,pubkey_len,"pubkey",VALUE_STRING)){
                                           printf("PUBKEY_SEND_ONE: Sent new public key to %i\n",sockfd);
                                    }
+                                   pthread_mutex_lock(mutex_lock);
                                    break;
                             case PUBKEY_SEND_ALL_BUT:
                                    for(uint32_t i = 0; i < nclients; i++){
                                           if(clients[i].sockfd != sockfd){
                                                  pthread_mutex_lock(&clients[i].mutex);
-                                                 if(write_wrap(clients[i].sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len",VALUE_UINT32)
-                                                  && write_wrap(clients[i].sockfd,&msg_type,msg_type_len,"msg_type",VALUE_MSGTYPE)
-                                                  && write_wrap(clients[i].sockfd,&username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                                  && write_wrap(clients[i].sockfd,username,(size_t)username_len,"username",VALUE_STRING)
-                                                  && write_wrap(clients[i].sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len",VALUE_UINT32)
-                                                  && write_wrap(clients[i].sockfd,pubkey,pubkey_len,"pubkey",VALUE_STRING)){
-                                                        printf("PUBKEY_SEND_ALL_BUT: Sent new public key to %i\n",sockfd);
-                                                 }
+                                                        if(write_wrap(clients[i].sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len",VALUE_UINT32)
+                                                         && write_wrap(clients[i].sockfd,&msg_type,msg_type_len,"msg_type",VALUE_MSGTYPE)
+                                                         && write_wrap(clients[i].sockfd,&username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
+                                                         && write_wrap(clients[i].sockfd,username,(size_t)username_len,"username",VALUE_STRING)
+                                                         && write_wrap(clients[i].sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len",VALUE_UINT32)
+                                                         && write_wrap(clients[i].sockfd,pubkey,pubkey_len,"pubkey",VALUE_STRING)){
+                                                               printf("PUBKEY_SEND_ALL_BUT: Sent new public key to %i\n",sockfd);
+                                                        }
+                                                 pthread_mutex_unlock(&clients[i].mutex);
                                           }
                                    }
                                    break;
@@ -149,27 +153,29 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t us
                      printf("[Server -> Client] Sending SERVER_SEND_ALL_PUBKEYS\n");
                      bool flag = false;
                      nclients--;
-                     if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len",VALUE_UINT32)
-                     && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type",VALUE_MSGTYPE)
-                     && write_wrap(sockfd,&nclients,sizeof(uint32_t),"nclients",VALUE_UINT16)){
-                            nclients++;
-                            flag = true;
-                            printf("passed msg_type_len:%u, msg_type:%u, nclients:%u\n",msg_type_len, msg_type, nclients);
-                            for(uint32_t i = 0; i < nclients; i++){
-                                   printf("writing msg_type_len: %u\n",msg_type_len);
-                                   if(clients[i].sockfd != sockfd
-                                   && write_wrap(sockfd,&clients[i].username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                   && write_wrap(sockfd,clients[i].username,clients[i].username_len,"username",VALUE_STRING)
-                                   && write_wrap(sockfd,&clients[i].pubkey_len,sizeof(uint32_t),"pubkey_len",VALUE_UINT32)
-                                   && write_wrap(sockfd,clients[i].pubkey,clients[i].pubkey_len,"pubkey",VALUE_STRING)){
-                                          printf("username_len:%u\n",clients[i].username_len);
-                                          printf("pubkey_len: %u\n",pubkey_len);
-                                          printf("Sent client information of %d to client %d\n",clients[i].sockfd,sockfd);
+                     pthread_mutex_lock(mutex_lock);
+                            if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len",VALUE_UINT32)
+                            && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type",VALUE_MSGTYPE)
+                            && write_wrap(sockfd,&nclients,sizeof(uint32_t),"nclients",VALUE_UINT16)){
+                                   nclients++;
+                                   flag = true;
+                                   printf("passed msg_type_len:%u, msg_type:%u, nclients:%u\n",msg_type_len, msg_type, nclients);
+                                   for(uint32_t i = 0; i < nclients; i++){
+                                          printf("writing msg_type_len: %u\n",msg_type_len);
+                                          if(clients[i].sockfd != sockfd
+                                          && write_wrap(sockfd,&clients[i].username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
+                                          && write_wrap(sockfd,clients[i].username,clients[i].username_len,"username",VALUE_STRING)
+                                          && write_wrap(sockfd,&clients[i].pubkey_len,sizeof(uint32_t),"pubkey_len",VALUE_UINT32)
+                                          && write_wrap(sockfd,clients[i].pubkey,clients[i].pubkey_len,"pubkey",VALUE_STRING)){
+                                                 printf("username_len:%u\n",clients[i].username_len);
+                                                 printf("pubkey_len: %u\n",pubkey_len);
+                                                 printf("Sent client information of %d to client %d\n",clients[i].sockfd,sockfd);
+                                          }
                                    }
                             }
-                     }
+                     pthread_mutex_unlock(mutex_lock);
                      if(!flag) nclients++;
-                     // this trick of nclients has to be done to let know the client that he only needs to take nclients-1 pubkey messages.
+                     // this trick of nclients-- nclients++ has to be done to let know the client that he only needs to take nclients-1 pubkey messages.
                      // TODO: this could be avoided simply in the client code taking the value and using value-1
                      printf("[Server -> Client] Done\n");
                      break;
@@ -194,14 +200,16 @@ try_send_to(char username_from[MAX_USERNAME], char username_to[MAX_USERNAME], ch
        for(size_t i = 0; i < nclients; i++){
               client_t client = clients[i];
               if(!strncmp(client.username, username_to, username_len)){ //send
-                     if( !write_wrap(client.sockfd, &msg_type_size, sizeof(uint32_t),"msg_type_size",VALUE_UINT32)
-                       || !write_wrap(client.sockfd, &msg_type, sizeof(msg_type),"msg_type",VALUE_STRING_HEX)
-                       || !write_wrap(client.sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
-                       || !write_wrap(client.sockfd, username_from, username_len,"username_from",VALUE_STRING)
-                       || !write_wrap(client.sockfd, &msg_len, sizeof(uint16_t),"msg_len",VALUE_UINT16)
-                       || !write_wrap(client.sockfd, msg, msg_len,"msg",VALUE_STRING_HEX)){
-                            fprintf(stderr,"Error while writing.\n");
-                     } else printf("Sent message '%*.s' to '%s'\n",(int)msg_len,msg,client.username);
+                     pthread_mutex_lock(&client.mutex);
+                            if( !write_wrap(client.sockfd, &msg_type_size, sizeof(uint32_t),"msg_type_size",VALUE_UINT32)
+                              || !write_wrap(client.sockfd, &msg_type, sizeof(msg_type),"msg_type",VALUE_STRING_HEX)
+                              || !write_wrap(client.sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
+                              || !write_wrap(client.sockfd, username_from, username_len,"username_from",VALUE_STRING)
+                              || !write_wrap(client.sockfd, &msg_len, sizeof(uint16_t),"msg_len",VALUE_UINT16)
+                              || !write_wrap(client.sockfd, msg, msg_len,"msg",VALUE_STRING_HEX)){
+                                   fprintf(stderr,"Error while writing.\n");
+                            } else printf("Sent message '%*.s' to '%s'\n",(int)msg_len,msg,client.username);
+                     pthread_mutex_unlock(&client.mutex);
               }
        }
 }
@@ -216,16 +224,18 @@ try_send_to_all(char username_from[MAX_USERNAME], char msg[MAX], uint16_t userna
               printf("checking msg: (%s -> %s)\n",username_from,client.username);
               if(strcmp(client.username,username_from)){
                      printf("Check OK: sending message\n");
-                     if(!write_wrap(client.sockfd, &msg_type_size, sizeof(uint32_t),"msg_type_size",VALUE_UINT32)
-                      || !write_wrap(client.sockfd, &msg_type, sizeof(msg_type),"msg_type",VALUE_STRING_HEX)
-                      || !write_wrap(client.sockfd, &username_from_len, sizeof(uint16_t),"username_from_len",VALUE_UINT16)
-                      || !write_wrap(client.sockfd, username_from, username_from_len,"username_from",VALUE_STRING)
-                      || !write_wrap(client.sockfd, &msg_len, sizeof(uint16_t),"msg_len",VALUE_UINT16)
-                      || !write_wrap(client.sockfd, msg, msg_len,"msg",VALUE_STRING_HEX)){
-                            fprintf(stderr,"Error while writing.\n");
-                     } else {
-                            printf("Sent message '%s' to '%s'\n",msg,client.username);
-                     }
+                     pthread_mutex_lock(&client.mutex);
+                            if(!write_wrap(client.sockfd, &msg_type_size, sizeof(uint32_t),"msg_type_size",VALUE_UINT32)
+                             || !write_wrap(client.sockfd, &msg_type, sizeof(msg_type),"msg_type",VALUE_STRING_HEX)
+                             || !write_wrap(client.sockfd, &username_from_len, sizeof(uint16_t),"username_from_len",VALUE_UINT16)
+                             || !write_wrap(client.sockfd, username_from, username_from_len,"username_from",VALUE_STRING)
+                             || !write_wrap(client.sockfd, &msg_len, sizeof(uint16_t),"msg_len",VALUE_UINT16)
+                             || !write_wrap(client.sockfd, msg, msg_len,"msg",VALUE_STRING_HEX)){
+                                   fprintf(stderr,"Error while writing.\n");
+                            } else {
+                                   printf("Sent message '%s' to '%s'\n",msg,client.username);
+                            }
+                     pthread_mutex_unlock(&client.mutex);
               }
        }
 }
@@ -246,29 +256,40 @@ client_handler(void* gclient)
               return NULL; // abort client-server connection
        }
 
-       nclients++; // nclients Global 
 
        uint16_t username_len = strlen(username)+1;
 
        uint32_t msglen;
        char msg[MAX];
 
-       memmove(client->username,username,username_len);
-       client->pubkey = pubkey;
-       client->pubkey_len = pubkey_len;
-       client->username_len = username_len;
+       pthread_mutex_lock(&mutex_new_client);
+              memmove(client->username,username,username_len);
+              client->pubkey = pubkey;
+              client->pubkey_len = pubkey_len;
+              client->username_len = username_len;
+              if(pthread_mutex_init(&client->mutex, NULL) != 0){
+                     printf("failed to initialize client's mutex\n");
+                     return NULL;
+              }
+       pthread_mutex_unlock(&mutex_new_client);
+
+       nclients++; // nclients Global 
 
        // pthread_mutex_lock(&mutex_public_keys);
        //        public_keys[npublic_keys++]= pubkey;
        // pthread_mutex_unlock(&mutex_public_keys);
 
-       send_pubkeys(0, connfd, username, username_len, SERVER_SEND_ALL_PUBKEYS, pubkey_len, pubkey);
-       send_pubkeys(PUBKEY_SEND_ALL_BUT, connfd, username, username_len, SERVER_PUBKEY_NEW, pubkey_len, pubkey);
+       send_pubkeys(0, connfd, username, username_len, &client->mutex, SERVER_SEND_ALL_PUBKEYS, pubkey_len, pubkey);
+       send_pubkeys(PUBKEY_SEND_ALL_BUT, connfd, username, username_len, &client->mutex, SERVER_PUBKEY_NEW, pubkey_len, pubkey);
 
        printf("Connection established with client\n");
 
        // infinite loop for chat 
        for (;;) { 
+              pthread_mutex_lock(&client->mutex);
+              // if a mutex is unlocked what does pthread_mutex_unlock do then?
+              // 
+              // 
               if(read_wrap(connfd, &request, sizeof(request),"client request", VALUE_STRING_HEX) &&
                  read_wrap(connfd, &msglen, sizeof(uint32_t),"msglen",VALUE_UINT32)) {
                      if(msglen > MAX){
@@ -276,6 +297,7 @@ client_handler(void* gclient)
                             continue;
                      }
                      read_wrap(connfd, msg, msglen,"msg",VALUE_STRING);
+                     pthread_mutex_unlock(&client->mutex);
                      if(!is_socket_connected(connfd)){
                             goto disconnect;
                      }
@@ -301,29 +323,34 @@ client_handler(void* gclient)
 
                             case TYPE_DISCONNECT:
                                    printf("Client '%s' disconnected\n",username);
+                                   goto disconnect;
 
                             default:
                                    printf("Message wrongfully constructed.\n");
                                    goto disconnect;
-                                   break;
 
                      }
               }
+              pthread_mutex_unlock(&client->mutex);
        } 
 disconnect:
+       printf("Disconnecting %s (socket %d)\n",username,client->sockfd);
        close(connfd);
        free(client->pubkey);
+       pthread_mutex_destroy(&client->mutex);
        memmove(client,client+1,nclients-(client-clients)-1);
        nclients--;
        enum server_message_type msg_type = SERVER_NOTIFY_DISCONNECT;
        uint32_t msg_type_size = sizeof(msg_type);
        for(client_t* pclient = clients; pclient-clients < nclients; pclient++){
-              if(write_wrap(pclient->sockfd,&msg_type_size,sizeof(uint32_t),"msg_type_size",VALUE_UINT32)
-                 && write_wrap(pclient->sockfd,&msg_type,msg_type_size,"msg_type",VALUE_MSGTYPE)
-                 && write_wrap(pclient->sockfd,&pclient->username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
-                 && write_wrap(pclient->sockfd,pclient->username,pclient->username_len,"username",VALUE_STRING_HEX)){
-                     printf("Disconnect notified to %s\n",pclient->username);
-              }
+              pthread_mutex_lock(&pclient->mutex);
+                     if(write_wrap(pclient->sockfd,&msg_type_size,sizeof(uint32_t),"msg_type_size",VALUE_UINT32)
+                        && write_wrap(pclient->sockfd,&msg_type,msg_type_size,"msg_type",VALUE_MSGTYPE)
+                        && write_wrap(pclient->sockfd,&pclient->username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
+                        && write_wrap(pclient->sockfd,pclient->username,pclient->username_len,"username",VALUE_STRING_HEX)){
+                            printf("Disconnect notified to %s\n",pclient->username);
+                     }
+              pthread_mutex_unlock(&pclient->mutex);
        }
        return NULL;
 } 

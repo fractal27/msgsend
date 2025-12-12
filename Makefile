@@ -1,16 +1,12 @@
-include config.mk
+include make/root.mk
 
-all: client server
+${OBJECTS_FROM_ROOT} ${TARGETS_FROM_ROOT}: ${SOURCES_FROM_ROOT}
+	$(MAKE) -C src release
 
-$(PATH_TO_HERBE)/herbe:
-	$(MAKE) -C '${PATH_TO_HERBE}'
-
-client: ${SOURCES}
-	@#$(CC) -DPATH_TO_HERBE="${PATH_TO_HERBE}" ${CFLAGS} client.c -o client ${LIBS}
-	$(CC) ${CFLAGS} client.c gpg-util.c -o client ${LIBS}
-
-server: ${SOURCES}
-	$(CC) ${CFLAGS} server.c -o server ${LIBS}
+debug: ${SOURCES_FROM_ROOT}
+	$(MAKE) -C src debug
 
 clean:
 	rm -f client server
+
+.PHONY: clean debug

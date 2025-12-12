@@ -9,7 +9,7 @@
 #define MAX_USERNAME 40
 #define MAX_SIMULTANIOUS_SEND 20
 
-typedef struct {
+typedef union {
        enum {
               OK                           = (1 << 0),
               ERROR_USERNAME_ALREADY_TAKEN = (1 << 1),

@@ -2,6 +2,4 @@
 test/*
 *.*cache*
 *cache*
-# client
-# server
-
+*.obj

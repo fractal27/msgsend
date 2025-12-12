@@ -30,7 +30,6 @@ pthread_mutex_t mutex_users = PTHREAD_MUTEX_INITIALIZER;
 
 
 
-
 userdata_response_establish
 client_establish(int sockfd, char username[40],uint32_t len_pubkey,char* pubkey){
        if(pubkey == NULL){
@@ -157,12 +156,13 @@ thread_read_messages(void* gsockfd){
                          case SERVER_NOTIFY_DISCONNECT:
                                 // notifies of the disconnect of another client, so that we remove that from the list.
                                 if(read_wrap(sockfd, &username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                && read_wrap(sockfd,username,username_len,sizeof(uint16_t)"username",VALUE_STRING)){
+                                && read_wrap(sockfd,username,username_len,"username",VALUE_STRING)){
                                        for(uint32_t client_idx = 0; client_idx < nusers; client_idx++)
                                        {
                                               if(!strncmp(username,users[client_idx].username,username_len)){
                                                      printf("User %s disconnected\n",username); 
                                                      memmove(&users[client_idx],&users[client_idx]+1,nusers-client_idx-1);
+                                                     nusers--;
                                                      break;
                                               }
                                        }
@@ -297,12 +297,16 @@ void client(int sockfd)
                
                // sha256_bytes((uint8_t*)msg_enc_signed, msg_enc_signed_len);
         }
+
+        // NTS: don't know if neccessary to cleanup
+        // information leak.
+        // bzero(msg,MAX);
+
         request.type = TYPE_DISCONNECT;
-        bzero(msg,MAX);
         send(sockfd, &request, sizeof(request), 0);
+        // close(sockfd);
         free(pubkey);
-       free(identity);
-       
+        free(identity);
 }
 
 void die(const char* msg, ...){
