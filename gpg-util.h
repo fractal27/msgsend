@@ -12,6 +12,8 @@ typedef struct {
        char *signer_fingerprint;      // may be NULL
 } decrypt_verify_result_t;
 
+extern gpgme_ctx_t ctx;
+
 void
 setup();
 

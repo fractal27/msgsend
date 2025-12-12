@@ -19,6 +19,7 @@
 struct {
        char username[MAX_USERNAME];
        char* pubkey;
+       char* fingerprint;
 } users[MAX_USERS];
 
 size_t nusers = 0;
@@ -29,6 +30,13 @@ pthread_mutex_t mutex_users = PTHREAD_MUTEX_INITIALIZER;
 
 
 #ifdef DEBUG
+
+void hexdump(const void *buf, size_t len) {
+           const unsigned char *p = buf;
+               for(size_t i=0;i<len;i++) printf("%02X ", p[i]);
+                   printf("\n");
+}
+
 bool read_wrap(int sockfd, void* bytes, size_t nbytes, char* label, char* fmt, bool show_value)
 {
        int result = recv(sockfd,bytes,nbytes,0);
@@ -36,6 +44,10 @@ bool read_wrap(int sockfd, void* bytes, size_t nbytes, char* label, char* fmt, b
               return false;
        } else {
               printf("Reading %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
+              // if(nbytes > 200){
+              //        printf("Unreasonable number of bytes.\n");
+              // } else printf("Wrote `%*.s` bytes", (int)nbytes, (char*)bytes);
+              hexdump(bytes,nbytes<200?nbytes:200);
        }
        return true;
 }
@@ -46,6 +58,7 @@ bool write_wrap(int sockfd, void* bytes, size_t nbytes, char* label, char* fmt, 
               return false;
        } else {
               printf("Writing %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
+              hexdump(bytes,nbytes<200?nbytes:200);
        }
        return true;
 }
@@ -113,6 +126,45 @@ client_establish(int sockfd, char username[40],uint32_t len_pubkey,char* pubkey)
 //        return true;
 // }
 
+
+
+
+
+
+
+
+
+
+void
+pubkey_add(char* pubkey, uint32_t pubkey_len, char* username, uint32_t username_len){
+#ifdef DEBUG
+       printf("pubkey got: `%s`(%zu bytes)\n",pubkey,sizeof(pubkey));
+#endif // DEBUG
+       // pthread_mutex_lock(&mutex_users);
+       gpgme_data_t keydata;
+       gpgme_data_new_from_mem(&keydata,pubkey,pubkey_len,0);
+       if(gpgme_op_import(ctx,keydata) != 0){
+              printf("gpgme error: pubkey couldn't be imported.\n");
+              goto leave;
+       }
+       gpgme_import_result_t ir = gpgme_op_import_result(ctx);
+       gpgme_import_status_t s;
+       for (s = ir->imports; s; s = s->next) 
+       { 
+              if (s->fpr) break; 
+       }
+       users[nusers].fingerprint = s->fpr;
+       users[nusers].pubkey = pubkey;
+       memmove(users[nusers].username,username,MAX_USERNAME);
+       // pthread_mutex_unlock(&mutex_users);
+       nusers++;
+#ifdef DEBUG
+       printf("--> pubkey added");
+       printf("nusers: %zu\n",nusers);
+#endif // DEBUG
+leave:
+       gpgme_data_release(keydata);
+}
 void*
 thread_read_messages(void* gsockfd){
     server_message_type_t srv_msg_type;
@@ -148,18 +200,7 @@ thread_read_messages(void* gsockfd){
                                               printf("Read error from initial public key push");
                                               break;
                                        }
-#ifdef DEBUG
-                                       printf("pubkey got: `%s`(%zu bytes)\n",pubkey,sizeof(pubkey));
-#endif // DEBUG
-                                       // pthread_mutex_lock(&mutex_users);
-                                       users[nusers].pubkey = pubkey;
-                                       memmove(users[nusers].username,username,MAX_USERNAME);
-                                       // pthread_mutex_unlock(&mutex_users);
-                                       nusers++;
-#ifdef DEBUG
-                                       printf("--> pubkey added");
-                                       printf("nusers: %zu\n",nusers);
-#endif // DEBUG
+                                       pubkey_add(pubkey,pubkey_len,username,username_len);
                                 }
                                 
                                 break;
@@ -181,17 +222,7 @@ thread_read_messages(void* gsockfd){
                                                      printf("Read error from initial public key push");
                                                      break;
                                               }
-#ifdef DEBUG
-                                              printf("pubkey got: `%s`(%zu bytes)\n",pubkey,sizeof(pubkey));
-#endif // DEBUG
-                                              // pthread_mutex_lock(&mutex_users);
-                                              users[nusers].pubkey = pubkey;
-                                              memmove(users[nusers].username,username,MAX_USERNAME);
-                                              // pthread_mutex_unlock(&mutex_users)
-                                              nusers++;
-#ifdef DEBUG
-                                              printf("( +1 pubkey ) nusers: %zu\n",nusers);
-#endif // DEBUG
+                                              pubkey_add(pubkey,pubkey_len,username,username_len);
                                        }
                                 }
 
@@ -286,7 +317,7 @@ void client(int sockfd)
                       printf("nusers: %zu\n",nusers);
                       for(i = 0; i < nusers; i++){
                              printf("+ Recepient %s (%s)\n", users[i].username, users[i].pubkey);
-                             recepients[i] = users[i].pubkey;
+                             recepients[i] = users[i].fingerprint;
                       }
                       recepients[i] = NULL;
                }

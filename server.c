@@ -58,6 +58,12 @@ is_socket_connected(int sockfd){
 }
 
 #ifdef DEBUG
+void hexdump(const void *buf, size_t len) {
+           const unsigned char *p = buf;
+           for(size_t i=0;i<len;i++) printf("%02X ", p[i]);
+           printf("\n");
+}
+
 bool write_wrap(int sockfd, void* bytes, size_t nbytes, char* label)
 {
        int result = write(sockfd,bytes,nbytes);
@@ -65,6 +71,7 @@ bool write_wrap(int sockfd, void* bytes, size_t nbytes, char* label)
               return false;
        } else if(result > 0) {
               printf("Writing %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
+              hexdump(bytes,nbytes<200?nbytes:200);
        }
        return true;
 }
@@ -75,6 +82,7 @@ bool read_wrap(int sockfd, void* bytes, size_t nbytes, char* label)
               return false;
        } else if(result > 0) {
               printf("Reading %zu bytes (%10s) from %d into %p\n", nbytes, label, sockfd, bytes);
+              hexdump(bytes,nbytes<200?nbytes:200);
        }
        return true;
 }
@@ -158,7 +166,8 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t us
                             case PUBKEY_SEND_ALL_BUT:
                                    for(uint32_t i = 0; i < nclients; i++){
                                           if(clients[i].sockfd != sockfd){
-                                                 if(write_wrap(clients[i].sockfd,&msg_type,msg_type_len,"msg_type")
+                                                 if(write_wrap(clients[i].sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
+                                                  && write_wrap(clients[i].sockfd,&msg_type,msg_type_len,"msg_type")
                                                   && write_wrap(clients[i].sockfd,&username_len,sizeof(uint16_t),"username_len")
                                                   && write_wrap(clients[i].sockfd,username,(size_t)username_len,"username")
                                                   && write_wrap(clients[i].sockfd,&pubkey_len,sizeof(uint32_t),"pubkey_len")
@@ -173,9 +182,13 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t us
                      break;
               case SERVER_SEND_ALL_PUBKEYS:
                      printf("[Server -> Client] Sending SERVER_SEND_ALL_PUBKEYS\n");
+                     bool flag = false;
+                     nclients--;
                      if(write_wrap(sockfd,&msg_type_len,sizeof(uint32_t),"msg_type_len")
                      && write_wrap(sockfd,&msg_type,msg_type_len,"msg_type")
                      && write_wrap(sockfd,&nclients,sizeof(uint32_t),"nclients")){
+                            nclients++;
+                            flag = true;
                             printf("passed msg_type_len:%u, msg_type:%u, nclients:%u\n",msg_type_len, msg_type, nclients);
                             for(uint32_t i = 0; i < nclients; i++){
                                    printf("writing msg_type_len: %u\n",msg_type_len);
@@ -190,6 +203,7 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, uint16_t us
                                    }
                             }
                      }
+                     if(!flag) nclients++;
                      printf("[Server -> Client] Done\n");
                      break;
               //TODO: implement

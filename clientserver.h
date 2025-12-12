@@ -34,10 +34,9 @@ typedef struct {
 
 
 enum server_message_type {
-       SERVER_RELAY_ENCRYPTED_MESSAGE,
-       // SERVER_PUBKEY_UPDATE,
-       SERVER_PUBKEY_NEW,
-       SERVER_SEND_ALL_PUBKEYS
+       SERVER_PUBKEY_NEW              = 0x0f,
+       SERVER_SEND_ALL_PUBKEYS        = 0xf0,
+       SERVER_RELAY_ENCRYPTED_MESSAGE = 0xff,
 };
 
 typedef uint32_t server_message_type_t;
