@@ -18,8 +18,8 @@ ${RELEASE_DIR}/server: ${OBJECTS_SERVER} ${OBJECTS_SERVER}
 release:  ${RELEASE_TARGETS}
 
 debug: ${SOURCES}
-	$(CC) ${DEBUG_CFLAGS} server.c -o server ${LIBS}
-	$(CC) ${DEBUG_CFLAGS} client.c gpg-util.c -o client ${LIBS}
+	$(CC) ${DEBUG_CFLAGS} server.c -o ${DEBUG_DIR}/server ${LIBS}
+	$(CC) ${DEBUG_CFLAGS} client.c gpg-util.c -o ${DEBUG_DIR}/client ${LIBS}
 
 clean:
 	rm -f client server
