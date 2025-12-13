@@ -7,5 +7,6 @@
 [DONE.] - PGP Exchange keys client-server
 [     ] - Automated testing
 [DONE.] - Implement mutex for client and a mutex for clients modification. 
-[     ] - Remove the struct data_request logic and use structural procedural instead of packed.
+[     ] - Remove the struct data_request logic and use manual read/write procedure instead of packed.
 [     ] - Fix the unilateral message issue
+[     ] - Fix the disconnection issue.
