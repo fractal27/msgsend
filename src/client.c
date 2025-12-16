@@ -31,7 +31,7 @@ pthread_mutex_t mutex_users = PTHREAD_MUTEX_INITIALIZER;
 
 
 userdata_response_establish
-client_establish(int sockfd, char username[40],uint32_t len_pubkey,char* pubkey){
+client_establish(int sockfd, char username[40],pubkey_len_t len_pubkey,char* pubkey){
        if(pubkey == NULL){
               fprintf(stderr,"client_establish: Invalid public key: key is NULL\n");
               exit(1);
@@ -51,10 +51,10 @@ client_establish(int sockfd, char username[40],uint32_t len_pubkey,char* pubkey)
        memmove(request,username,ulen+1);
        // printf("to send username: writing %zu bytes\n",sizeof(request));
 
-       if(!write_wrap(sockfd, request, sizeof(request),"establish username",VALUE_STRING))  {
+       if(!write_wrap(sockfd, request, sizeof(request),"establish username",VALUE_STRING_HEX/**/))  {
               fprintf(stderr,"client_established: write(fd,request,sizeof(request)) failed (Server lost?)\n");
        }
-       if(!write_wrap(sockfd, &len_pubkey, sizeof(uint32_t),"len_pubkey",VALUE_UINT32))  {
+       if(!write_wrap(sockfd, &len_pubkey, SIZE_PUBKEY_LEN,"len_pubkey",VALUE_UINT32))  {
               fprintf(stderr,"client_established: write(fd,&len_pubkey,sizeof(len_pubkey)) failed (Server lost?)\n");
        }
        if(!write_wrap(sockfd, pubkey, len_pubkey, "pubkey", VALUE_UINT32))  {
@@ -94,7 +94,7 @@ client_establish(int sockfd, char username[40],uint32_t len_pubkey,char* pubkey)
 
 
 void
-user_add(char* pubkey, uint32_t pubkey_len, char* username, uint32_t username_len){
+user_add(char* pubkey, pubkey_len_t pubkey_len, char* username, username_len_t username_len){
 #ifdef DEBUG
        printf("pubkey got: `%s`(%zu bytes)\n",pubkey,sizeof(pubkey));
 #endif // DEBUG
@@ -118,34 +118,28 @@ user_add(char* pubkey, uint32_t pubkey_len, char* username, uint32_t username_le
 void*
 thread_read_messages(void* gsockfd){
     server_message_type_t srv_msg_type;
-    uint32_t msg_type_len;
     int sockfd = *(int*)gsockfd;
 
     char username[MAX_USERNAME];
-    uint16_t username_len;
+    username_len_t username_len;
     char msg[MAX];
-    uint16_t msg_len;
+    msg_len_t msg_len;
 
-    uint32_t npubkeys;
-    uint32_t pubkey_len;
+    npubkeys_t npubkeys;
+    pubkey_len_t pubkey_len;
     char* pubkey;
 
 
     for(;;){
-           if(read_wrap(sockfd, &msg_type_len, sizeof(uint32_t),"msg_type_len",VALUE_UINT32)){
-                  // printf("Arrived here; msg_type_len: %u\n", msg_type_len);
-                  if(!read_wrap(sockfd, &srv_msg_type, msg_type_len,"srv_msg_type",VALUE_MSGTYPE)){
-                         fprintf(stderr,"Read error\n");
-                         continue;
-                  }
+           if(read_wrap(sockfd, &srv_msg_type, SIZE_MSG_TYPE,"srv_msg_type",VALUE_MSGTYPE)){
                   switch(srv_msg_type){
                          case SERVER_PUBKEY_NEW:
-                                if(read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                && read_wrap(sockfd, username, username_len,"username",VALUE_STRING)
-                                && read_wrap(sockfd, &pubkey_len, sizeof(uint32_t),"pubkey_len",VALUE_UINT32)){
+                                if(read_wrap(sockfd, &username_len, SIZE_USERNAME_LEN,"username_len",VALUE_UINT16)
+                                && read_wrap(sockfd, username, username_len,"username",VALUE_STRING_HEX/**/)
+                                && read_wrap(sockfd, &pubkey_len, SIZE_PUBKEY_LEN,"pubkey_len",VALUE_UINT32)){
                                        // printf("pubkey_len: %zu\n",(size_t)pubkey_len);
                                        pubkey = (char*)malloc((size_t)pubkey_len+1);
-                                       if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey",VALUE_STRING)){
+                                       if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey",VALUE_STRING_HEX/**/)){
                                               fprintf(stderr,"Read error from initial public key push");
                                               break;
                                        }
@@ -155,9 +149,9 @@ thread_read_messages(void* gsockfd){
                                 break;
                          case SERVER_NOTIFY_DISCONNECT:
                                 // notifies of the disconnect of another client, so that we remove that from the list.
-                                if(read_wrap(sockfd, &username_len,sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                && read_wrap(sockfd,username,username_len,"username",VALUE_STRING)){
-                                       for(uint32_t client_idx = 0; client_idx < nusers; client_idx++)
+                                if(read_wrap(sockfd, &username_len,SIZE_USERNAME_LEN,"username_len",VALUE_UINT16)
+                                && read_wrap(sockfd,username,username_len,"username",VALUE_STRING_HEX/**/)){
+                                       for(nclients_t client_idx = 0; client_idx < nusers; client_idx++)
                                        {
                                               if(!strncmp(username,users[client_idx].username,username_len)){
                                                      printf("User %s disconnected\n",username); 
@@ -171,18 +165,18 @@ thread_read_messages(void* gsockfd){
                                 break;
                          case SERVER_SEND_ALL_PUBKEYS:
                                 // initial public key push after the establishment of connection.
-                                if(!read_wrap(sockfd, &npubkeys, sizeof(uint32_t),"npubkeys",VALUE_UINT32)){
+                                if(!read_wrap(sockfd, &npubkeys, SIZE_NPUBKEYS, "npubkeys",VALUE_UINT32)){
                                        printf("Read error from initial public key push");
                                        continue;
                                 }
                                 // printf("Reading %u public keys\n",npubkeys);
-                                for(size_t i = 0; i < npubkeys; i++){
-                                       if(read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                       && read_wrap(sockfd, username, username_len,"username",VALUE_STRING)
-                                       && read_wrap(sockfd, &pubkey_len, sizeof(uint32_t),"pubkey_len",VALUE_UINT32)){
+                                for(npubkeys_t i = 0; i < npubkeys; i++){
+                                       if(read_wrap(sockfd, &username_len, SIZE_USERNAME_LEN,"username_len",VALUE_UINT16)
+                                       && read_wrap(sockfd, username, username_len,"username",VALUE_STRING_HEX/**/)
+                                       && read_wrap(sockfd, &pubkey_len, SIZE_PUBKEY_LEN,"pubkey_len",VALUE_UINT32)){
                                               // printf("pubkey_len: %zu\n",(size_t)pubkey_len);
                                               pubkey = (char*)malloc((size_t)pubkey_len+1);
-                                              if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey",VALUE_STRING)){
+                                              if(!read_wrap(sockfd, pubkey, (size_t)pubkey_len,"pubkey",VALUE_STRING_HEX/**/)){
                                                      printf("Read error from initial public key push");
                                                      break;
                                               }
@@ -194,11 +188,11 @@ thread_read_messages(void* gsockfd){
                                 break;
 
                          case SERVER_RELAY_ENCRYPTED_MESSAGE:
-                                if( !read_wrap(sockfd, &username_len, sizeof(uint16_t),"username_len",VALUE_UINT16)
-                                 || !read_wrap(sockfd, username, username_len, username,VALUE_STRING)
-                                 || !read_wrap(sockfd, &msg_len, sizeof(uint16_t),"msg_len",VALUE_UINT16)
+                                if( !read_wrap(sockfd, &username_len, SIZE_USERNAME_LEN,"username_len",VALUE_UINT16)
+                                 || !read_wrap(sockfd, username, username_len, username,VALUE_STRING_HEX/**/)
+                                 || !read_wrap(sockfd, &msg_len, SIZE_MSG_LEN,"msg_len",VALUE_UINT16)
                                  || msg_len > 65535
-                                 || !read_wrap(sockfd, msg, msg_len,"msg",VALUE_STRING)){
+                                 || !read_wrap(sockfd, msg, msg_len,"msg",VALUE_STRING_HEX/**/)){
                                        fprintf(stderr,"Read error\n");
                                        // shutdown(sockfd,SHUT_RDWR);
                                        // close(sockfd);
@@ -300,7 +294,7 @@ void client(int sockfd)
                // printf("signed message: %s",msg_enc_signed);
         
                send(sockfd, &request, sizeof(request), 0);
-               send(sockfd, &msg_enc_signed_len, sizeof(uint32_t), 0);
+               send(sockfd, &msg_enc_signed_len, SIZE_MSG_LEN, 0);
                send(sockfd, msg_enc_signed, msg_enc_signed_len, 0);
                
                // sha256_bytes((uint8_t*)msg_enc_signed, msg_enc_signed_len);
