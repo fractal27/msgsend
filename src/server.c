@@ -116,7 +116,7 @@ server_establish_client(int connfd, char out_username[MAX_USERNAME],pubkey_len_t
 //
 void
 send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, username_len_t username_len, pthread_mutex_t* mutex_lock, server_message_type_t msg_type, pubkey_len_t pubkey_len, char* pubkey){
-       printf("Sending public key(s)...\n");
+       printf("============[ Sending public key(s)...]===================\n");
        switch((enum server_message_type) msg_type){
               case SERVER_PUBKEY_NEW:
                      printf("[Server -> Client] Sending SERVER_PUBKEY_NEW\n");
@@ -195,6 +195,7 @@ send_pubkeys(enum pubkey_send_mode mode, int sockfd, char* username, username_le
                      fprintf(stderr,"\e[33mWarning: send_pubkeys: This function should be used only for public keys exchanges. Sending SERVER_RELAY_ENCRYPTED_MESSAGE packets is NOT the use case for it.\n\e[0m");
                      return;
        }
+       printf("==================[ DONE ]===================\n");
 }
 void
 try_send_to(char username_from[MAX_USERNAME], char username_to[MAX_USERNAME], char msg[MAX], 
@@ -222,13 +223,14 @@ void
 try_send_to_all(char username_from[MAX_USERNAME], char msg[MAX], username_len_t username_from_len, msg_len_t msg_len){
        server_message_type_t msg_type = SERVER_RELAY_ENCRYPTED_MESSAGE;
 
+       printf("==================[ BEGIN SENDTO_ALL %s ]===================\n", username_from);
        for(size_t i = 0; i < nclients; i++){
               client_t client = clients[i];
               printf("checking msg: (%s -> %s)\n",username_from,client.username);
               if(strcmp(client.username,username_from)){
-                     printf("Check OK: sending message\n");
+                     printf("Check OK: 1: sending message\n");
                      pthread_mutex_lock(&client.mutex);
-                            printf("TEST: mutex is not locked\n");
+                            printf("Check OK: 2: sending message\n");
                             if( !write_wrap(client.sockfd, &msg_type, SIZE_MSG_TYPE,"msg_type",VALUE_STRING_HEX)
                              || !write_wrap(client.sockfd, &username_from_len, SIZE_USERNAME_LEN,"username_from_len",VALUE_UINT16)
                              || !write_wrap(client.sockfd, username_from, username_from_len,"username_from",VALUE_STRING)
@@ -242,6 +244,7 @@ try_send_to_all(char username_from[MAX_USERNAME], char msg[MAX], username_len_t 
                      printf("Done.\n");
               }
        }
+       printf("==================[ DONE SENDTO_ALL ]===================\n");
 }
 
 void* 
@@ -296,6 +299,7 @@ client_handler(void* gclient)
 
        for (;;) {
               // checks count in read buffer of socket
+              count = 0;
               while(count <= 0) {
                      ioctl(client->sockfd, FIONREAD, &count);
                      usleep(100);
