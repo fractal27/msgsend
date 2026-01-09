@@ -1,5 +1,5 @@
 # tests, cache and executables.
-test/*
+test/
 *.*cache*
 *cache*
 *.obj

@@ -1,6 +1,7 @@
 // server.c //
 
 #include <stdio.h> 
+#include <signal.h> 
 #include <pthread.h>
 #include <netdb.h> 
 #include <netinet/in.h> 
@@ -11,32 +12,15 @@
 #include <sys/ioctl.h>
 #include <sys/types.h> 
 #include <unistd.h> // read(), write_wrap(), close()
-#include "clientserver.h"
+#include "server.h"
 
 
-enum pubkey_send_mode{
-    PUBKEY_SEND_ONE,
-    PUBKEY_SEND_ALL_BUT,
-};
 
-
-typedef struct {
-       pthread_t thread;
-       int sockfd;
-       char username[MAX_USERNAME];
-       username_len_t username_len;
-       char* pubkey;
-       pubkey_len_t pubkey_len;
-       pthread_mutex_t mutex;
-} client_t;
-
-pthread_mutex_t mutex_new_client = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_clients = PTHREAD_MUTEX_INITIALIZER;
 
 client_t clients[MAX_USERS];
 nclients_t nclients = 0;
-
-// bool message_to_send = false;
-// pthread_mutex_t mutex_public_keys = PTHREAD_MUTEX_INITIALIZER;
+static bool server_running = true;
 
 // ==================================== Util functions ===========================================
 
@@ -270,7 +254,7 @@ client_handler(void* gclient)
        char msg[MAX];
 
        printf("Initializing mutex for username %s\n",username);
-       pthread_mutex_lock(&mutex_new_client);
+       pthread_mutex_lock(&mutex_clients);
               memmove(client->username,username,username_len);
               client->pubkey = pubkey;
               client->pubkey_len = pubkey_len;
@@ -280,7 +264,7 @@ client_handler(void* gclient)
                      return NULL;
               }
               printf("Initialized mutex %p from user with username %s\n",&client->mutex,username);
-       pthread_mutex_unlock(&mutex_new_client);
+       pthread_mutex_unlock(&mutex_clients);
 
        nclients++; // nclients Global 
 
@@ -297,7 +281,7 @@ client_handler(void* gclient)
        int count = 0;
        bool success;
 
-       for (;;) {
+       while(server_running){
               // checks count in read buffer of socket
               count = 0;
               while(count <= 0) {
@@ -367,10 +351,13 @@ disconnect:
        printf("Disconnecting %s (socket %d)\n",username,client->sockfd);
        close(connfd);
        free(client->pubkey);
+
+       pthread_mutex_lock(&mutex_clients)
+              memmove(client,client+1,nclients-(client-clients)-1);
+              nclients--;
+       pthread_mutex_unlock(&mutex_clients)
        pthread_mutex_unlock(&client->mutex);
        pthread_mutex_destroy(&client->mutex);
-       memmove(client,client+1,nclients-(client-clients)-1);
-       nclients--;
        enum server_message_type msg_type = SERVER_NOTIFY_DISCONNECT;
        for(client_t* pclient = clients; pclient-clients < nclients; pclient++){
               pthread_mutex_lock(&pclient->mutex);
@@ -383,65 +370,67 @@ disconnect:
        }
        return NULL;
 }
-// Driver function 
-int main() 
-{ 
-       int sockfd, connfd; 
-       socklen_t len;
+
+void threads_cleanup(int signal){
+       // force disconnect every client
+       server_running = false; // TODO: just this?
+       //do {
+              //   // assume client->mutex is locked
+              //   pthread_mutex_lock(&mutex_clients);
+              //          client_t* client = &clients[nclients];
+              //   pthread_mutex_unlock(&mutex_clients);
+              //   printf("Disconnecting %s (socket %d)\n",client->username,client->sockfd);
+
+              //   close(client->sockfd);
+              //   free(client->pubkey);
+
+              //   pthread_mutex_lock(&mutex_clients)
+              //          memmove(client,client+1,nclients-(client-clients)-1);
+              //          nclients--;
+              //   pthread_mutex_unlock(&mutex_clients)
+              // pthread_mutex_unlock(&client->mutex); // NTS: is this unlock necessary
+
+              // pthread_mutex_destroy(&client->mutex);
+
+              // enum server_message_type msg_type = SERVER_NOTIFY_DISCONNECT;
+
+              // for(client_t* pclient = clients; pclient-clients < nclients; pclient++){
+              //        pthread_mutex_lock(&pclient->mutex);
+              //        if (write_wrap(pclient->sockfd,&msg_type,SIZE_MSG_TYPE,"msg_type",VALUE_MSGTYPE)
+              //                      && write_wrap(pclient->sockfd,&pclient->username_len,SIZE_USERNAME_LEN,"username_len",VALUE_UINT16)
+              //                      && write_wrap(pclient->sockfd,pclient->username,pclient->username_len,"username",VALUE_STRING_HEX)){
+              //               printf("Disconnect notified to %s\n",pclient->username);
+              //        }
+              //        pthread_mutex_unlock(&pclient->mutex);
+              // }
+       // } while(nclients--);
+}
+
+int
+server(int sockfd){
+       int connfd; 
        struct sockaddr_in servaddr, cli; 
-
-       // socket create and verification 
-       int opt = 1;
-       sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-       setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-       if (sockfd == -1) { 
-              printf("socket creation failed...\n"); 
-              exit(0); 
-       } 
-       else
-              printf("Socket successfully created..\n"); 
-
-       // assign IP, PORT 
-       servaddr.sin_family = AF_INET; 
-       servaddr.sin_addr.s_addr = htonl(INADDR_ANY); 
-       servaddr.sin_port = htons(PORT); 
-
-       // Binding newly created socket to given IP and verification 
-       if ((bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr))) != 0) { 
-              printf("socket bind failed...\n"); 
-              exit(0); 
-       } 
-       else
-              printf("Socket successfully binded..\n"); 
-
-       // Now server is ready to listen and verification 
-       if ((listen(sockfd, 5)) != 0) { 
-              printf("Listen failed...\n"); 
-              exit(0); 
-       } 
-       else
-              printf("Server listening..\n"); 
-       len = sizeof(cli); 
-
-       while(1){
+       socklen_t len = sizeof(struct sockaddr_in);
+       signal(SIGTERM, threads_cleanup);
+       while(server_running){
               // Accept the data packet from client and verification 
               if (nclients == MAX_USERS) { 
-                printf("Max users reached: Accept must be rejected\n");
+                LOG_NOTICE("Max users reached: Accept must be rejected\n");
                 while(nclients == MAX_USERS) usleep(1.2e6);
                 if(nclients == MAX_USERS){
                        // probably just keyboard interrupt while in `while` loop
-                       break;
+                       return -1;
                 }
               }
               connfd = accept(sockfd, (struct sockaddr*)&cli, &len); 
               if (connfd < 0) { 
-                     printf("Server accept failed...\n"); 
-                     continue;
+                     LOG_ERROR("Server accept failed...\n"); 
+                     break;
               } else printf("Server accept the client...\n"); 
               clients[nclients] = (client_t){ .sockfd = connfd };
               pthread_create(&clients[nclients].thread, NULL, client_handler, &clients[nclients]);
        }
        // After chatting close the socket 
        close(sockfd); 
+       return 0;
 }

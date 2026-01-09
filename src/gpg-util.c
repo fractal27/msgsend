@@ -19,14 +19,14 @@
        do  {                                                               \
               if (err != GPG_ERR_NO_ERROR)                                 \
               {                                                            \
-                     fprintf(stderr, "%s:%s:%d: %s: %s\n",                 \
+                     /*fprintf(stderr, "%s:%s:%d: %s: %s\n",                 \
                                    __FILE__, __FUNCTION__, __LINE__,       \
                                    gpgme_strsource(err),                   \
-                                   gpgme_strerror(err));                   \
+                                   gpgme_strerror(err));                   */\
                      goto label;                                           \
               } else {                                                     \
-                     printf("%s:%s:%d:", __FILE__, __FUNCTION__, __LINE__);\
-                     printf(msg_if_noerr);                                 \
+                     /*printf("%s:%s:%d:", __FILE__, __FUNCTION__, __LINE__);*/\
+                      printf(msg_if_noerr);                                 \
               }                                                            \
        } while (0)
 
@@ -34,13 +34,13 @@
        do  {                                                               \
               if (err != GPG_ERR_NO_ERROR)                                 \
               {                                                            \
-                     fprintf(stderr, "%s:%s:%d: %s: %s\n",                 \
+                     /*fprintf(stderr, "%s:%s:%d: %s: %s\n",                 \
                                    __FILE__, __FUNCTION__, __LINE__,       \
                                    gpgme_strsource(err),                   \
-                                   gpgme_strerror(err));                   \
+                                   gpgme_strerror(err));                   */\
                      return return_val;                                    \
               } else {                                                     \
-                     printf("%s:%s:%d:", __FILE__, __FUNCTION__, __LINE__);\
+                     /*printf("%s:%s:%d:", __FILE__, __FUNCTION__, __LINE__);*/\
                      printf(msg_if_noerr);                                 \
               }                                                            \
        } while (0)

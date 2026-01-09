@@ -7,6 +7,6 @@ debug: ${SOURCES_FROM_ROOT}
 	$(MAKE) -C src debug
 
 clean:
-	rm -f client server
+	rm -f ${TARGETS_FROM_ROOT}
 
 .PHONY: clean debug

@@ -13,22 +13,13 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <stddef.h>
-#include "clientserver.h"
+#include "client.h"
 #include "gpg-util.h"
 
-struct {
-       char username[MAX_USERNAME];
-       char* pubkey;
-       char* fingerprint;
-} users[MAX_USERS];
-
+struct user users[MAX_USERS];
 size_t nusers = 0;
 
-
-
-pthread_mutex_t mutex_users = PTHREAD_MUTEX_INITIALIZER;
-
-
+// pthread_mutex_t mutex_users = PTHREAD_MUTEX_INITIALIZER;
 
 userdata_response_establish
 client_establish(int sockfd, char username[40],pubkey_len_t len_pubkey,char* pubkey){
@@ -69,34 +60,38 @@ client_establish(int sockfd, char username[40],pubkey_len_t len_pubkey,char* pub
        return response;
 }
 
-// bool
-// is_socket_connected(int sockfd){
-//        int error = 0;
-//        socklen_t len = sizeof (error);
-//        int retval = getsockopt (sockfd, SOL_SOCKET, SO_ERROR, &error, &len);
-//        if(retval != 0){
-//               fprintf(stderr, "error getting socket error code: %s\n", strerror(retval));
-//               return false;
-//        } else if (error != 0){
-//               fprintf(stderr, "socket error: %s\n", strerror(error));
-//               return false;
-//        }
-//        return true;
-// }
+#ifdef USE_TUI
+void
+init_term(){
+       long nlines = strtol(getenv("LINES"),NULL,10);
+       if(nlines == LONG_MAX || nlines == LONG_MIN){
+              LOG_ERROR("Error: LINES and COLS are not properly set.\n");
+              exit(1);
+       }
+       printf("\n\e7"); // assure space for the text at the bottom
+        printf("\e[%d;%dr",nlines-2,nlines); // scrollable region
+       printf("\e8\e[1A");
+}
 
-
-
-
-
-
-
-
-
+void
+deinit_term(){
+       long nlines = strtol(getenv("LINES"),NULL,10);
+       if(nlines == LONG_MAX || nlines == LONG_MIN){
+              LOG_ERROR("Error: LINES and COLS are not properly set.\n");
+              exit(1);
+       }
+       printf("\n\e7"); // assure space for the text at the bottom
+        printf("\e[%d;%ldr",0,nlines); // scrollable region from 0 to nlines
+        printf("\e[H\e[2J"); // clear screen and put the cursor at the home pos.
+        printf("\e[%d;%dH",0,0);
+       printf("\e8");
+}
+#endif
 
 void
 user_add(char* pubkey, pubkey_len_t pubkey_len, char* username, username_len_t username_len){
 #ifdef DEBUG
-       printf("pubkey got: `%s`(%zu bytes)\n",pubkey,sizeof(pubkey));
+       printf("pubkey got: `%s`(%zu bytes) with username %s\n",pubkey,sizeof(pubkey),username);
 #endif // DEBUG
        // pthread_mutex_lock(&mutex_users);
        char* fpr;
@@ -218,7 +213,7 @@ thread_read_messages(void* gsockfd){
     }
 }
 
-void client(int sockfd)
+void client(int sockfd, char* identity)
 {
        pthread_t thread_read;
        char msg[MAX];
@@ -226,8 +221,7 @@ void client(int sockfd)
        int n;
        userdata_request request;
 
-       
-       char* identity = userinput_identity_can_encrypt();
+       if(identity == NULL) identity = userinput_identity_can_encrypt();
        printf("chosen identity %s\n",identity);
        if(identity == NULL){
               fprintf(stderr, "Error: identity is null.\n");
@@ -309,48 +303,4 @@ void client(int sockfd)
         // close(sockfd);
         free(pubkey);
         free(identity);
-}
-
-void die(const char* msg, ...){
-       va_list args;
-       va_start(args, msg);
-       vfprintf(stderr,msg,args);
-       exit(1);
-       __builtin_unreachable();
-}
-
-
-int main(int argc, char** argv)
-{
-       int sockfd;
-       struct sockaddr_in servaddr;
-
-       // socket create and verification
-       sockfd = socket(AF_INET, SOCK_STREAM, 0);
-       if (sockfd == -1) {
-              printf("socket creation failed...\n");
-              exit(0);
-       }
-       else printf("Socket successfully created..\n");
-       bzero(&servaddr, sizeof(servaddr));
-
-       // assign IP, PORT
-       servaddr.sin_family = AF_INET;
-       if(argc >= 2) servaddr.sin_addr.s_addr = inet_addr(argv[1]);
-       else die("No server address provided");
-       if(argc >= 3) servaddr.sin_port = htons(atoi(argv[2]));
-       else servaddr.sin_port = htons(PORT);
-
-       // connect the client socket to server socket
-       if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) {
-              printf("connection with the server failed...\n");
-              exit(1);
-       } else printf("connected to the server..\n");
-       setup(); // setup encryption
-
-       // function for chat
-       client(sockfd);
-
-       // close the socket
-       close(sockfd);
 }

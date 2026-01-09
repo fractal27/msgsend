@@ -9,4 +9,4 @@
 [DONE.] - Implement mutex for client and a mutex for clients modification. 
 [DONE?] - Remove the struct data_request logic and use manual read/write procedure instead of packed.
 [DONE.] - Fix the unilateral message issue
-[     ] - Fix the disconnection issue.
+[DONE?] - Fix disconnection issue
