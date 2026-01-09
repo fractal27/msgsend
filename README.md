@@ -4,7 +4,7 @@ This is a simple implementation of a simple E2EE communication based server, whi
 in the client; and the server simply relays the encrypted messages and the other public keys to the client, which imports
 the keys, and decrypts/encrypts the messages to each individual recepient.
 
-![Watch the video](./demo.gif)
+![Demo video](demo/demo.gif)
 
 
 
